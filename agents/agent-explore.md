@@ -11,7 +11,7 @@ description: >
   MUST NOT be used for: web research (use agent-websearch), library documentation (use agent-docs),
   writing or modifying code (use general-purpose agent).
 
-  Use proactively when a task clearly requires codebase understanding before implementation.
+  Use PROACTIVELY when a task clearly requires codebase understanding before implementation.
 
   <example>
   Context: User opens an unfamiliar project and needs orientation

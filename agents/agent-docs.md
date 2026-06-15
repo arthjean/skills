@@ -13,6 +13,8 @@ description: >
   current web information or news (use agent-websearch), purely conceptual questions with no
   version sensitivity, or documentation of internal project code.
 
+  Use PROACTIVELY for any library API, signature, version, or migration question before writing integration code.
+
   <example>
   Context: User needs documentation for a specific library API
   user: "How do I set up middleware in Axum 0.8?"
