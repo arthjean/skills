@@ -1,531 +1,159 @@
 ---
-model: opus
 name: meta-debug
-description: "Multi-agent debugging workflow that diagnoses and fixes errors with surgical precision. Orchestrates agent-explore (root cause), agent-docs (API verification), and agent-websearch (community solutions) in a 7-step pipeline: reproduce, triage, investigate, verify docs, research (conditional), fix, verify+regress. Includes DDI circuit breaker, git bisect for regressions, trajectory smell detection, and hypothesis register. Use when the user pastes an error message, stack trace, compiler output, or failing test, or says 'debug', 'fix this error', 'why is this failing', 'help me fix', 'what went wrong', 'diagnose this', or describes unexpected behavior with error context. Do NOT trigger for general code questions, feature requests, or refactoring without an error."
-argument-hint: "[error message or description]"
+description: "Reproduce-first debugging workflow that diagnoses and fixes errors with targeted local evidence, bounded hypotheses, conditional helpers, two fix attempts maximum, and focused verification. Use when the user provides an error, stack trace, failing command, compiler output, failing test, unexpected behavior, or asks to debug, diagnose, or fix a concrete failure. Do not use for feature implementation, general code review, speculative refactoring, or questions without an observed failure."
 ---
 
-# meta-debug — Multi-Agent Debugging Pipeline
-
-## Overview
-
-meta-debug is a 7-step debugging pipeline that diagnoses errors and applies fixes by combining:
-1. **Reproduce** (orchestrator) — confirm the error is reproducible before investigating
-2. **Error triage** (orchestrator) — classify, extract signals, build hypothesis register
-3. **Codebase investigation** (agent-explore) — trace root cause, map dependency chain
-4. **Documentation check** (agent-docs) — verify API usage, check for breaking changes
-5. **Web research** (agent-websearch) — community solutions, known issues (conditional)
-6. **Fix implementation** (orchestrator) — apply minimal fix with explicit minimality constraints
-7. **Verify & regress** (orchestrator) — run verification, codify regression test
-
-Steps 3 and 4 run in parallel. Step 5 runs only if Steps 3-4 don't resolve the issue.
-
-Cross-cutting concerns: **DDI circuit breaker** (max 2 fix attempts before strategy change), **trajectory smell detection** (real-time anti-pattern monitoring), **hypothesis register** (externalized diagnostic state).
-
-## Execution Flow
-
-```
-Error Input (message, stack trace, test output)
-     │
-     ▼
-┌─────────────┐
-│  Step 1:    │
-│  REPRODUCE  │  ← Orchestrator: confirm error is reproducible
-│  (fast)     │
-└──────┬──────┘
-       │ reproducible? YES → continue / NO → ask user
-       ▼
-┌─────────────┐
-│  Step 2:    │
-│   TRIAGE    │  ← Orchestrator: classify, hypothesis register
-│  (instant)  │
-└──────┬──────┘
-       │ regression detected?
-       ├── YES → git bisect shortcut ──┐
-       │                               │
-       │ error classification          │
-       ▼                               ▼
-┌──────┴──────────────────┐    ┌──────────────┐
-│         PARALLEL         │    │  GIT BISECT  │
-│  ┌──────────┐  ┌──────────┐  │  (automatic) │
-│  │ Step 3:  │  │ Step 4:  │  └──────┬───────┘
-│  │INVESTIGATE│  │VERIFY    │         │
-│  │(codebase)│  │(docs)    │         │
-│  └────┬─────┘  └────┬─────┘         │
-│       │              │     │         │
-└───────┼──────────────┼─────┘         │
-        ▼              ▼               │
-   ┌─────────────────────────┐         │
-   │  Root cause identified? │◄────────┘
-   │  YES → Step 6           │
-   │  NO  → Step 5           │
-   │  LOW confidence → ask   │
-   └─────────────────────────┘
-        │         │        │
-        ▼         ▼        ▼
-  ┌──────────┐ ┌──────┐ ┌──────────┐
-  │ Step 5:  │ │ ASK  │ │ Step 6:  │
-  │ RESEARCH │ │ USER │ │ FIX      │
-  │(web,cond)│ │      │ │(minimal) │
-  └────┬─────┘ └──────┘ └────┬─────┘
-       │                      │
-       └──────────┬───────────┘
-                  ▼
-          ┌──────────────┐
-          │  Step 7:     │
-          │  VERIFY &    │
-          │  REGRESS     │
-          └──────────────┘
-               │
-          DDI circuit breaker:
-          fix failed? attempt < 2?
-          YES → retry Step 6 with new strategy
-          NO  → escalate to user
-```
-
-## Runtime Output Format
-
-Before each step, print a progress header:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[Step N/7] STEP_NAME
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-Between major steps, print a thin separator: `───────────────────────────────`
-
-## Effort Scaling (Fast-Path for Obvious Errors)
-
-Not all errors need the full 7-step pipeline. Before starting Step 1, evaluate the error complexity:
-
-| Error complexity | Pipeline path | Rationale |
-|---|---|---|
-| **Trivial** — syntax error, missing import, obvious typo, single-line fix visible in error message | **Fast-path**: Skip Steps 3-5. Reproduce → Triage → Fix → Verify. No agents needed. | Anthropic: "Simple queries warrant 1 agent with 3-10 tool calls." Spawning 3 agents for a missing semicolon wastes context and time. |
-| **Standard** — type mismatch, runtime error with clear stack trace, failing test with assertion diff | **Full pipeline**: All 7 steps, Steps 3-4 in parallel, Step 5 conditional. | Default path — this is what the pipeline is designed for. |
-| **Complex** — multi-file issue, cryptic error, no stack trace, architecture-level bug, concurrency | **Full pipeline + extended thinking**: All 7 steps. Use extended thinking for root cause analysis at the decision gate and before fix implementation. | Google Passerine: human-reported bugs (ambiguous) have 25% fix rate vs 73% for machine-reported (clear). Complex errors need more reasoning investment. |
-
-The orchestrator determines complexity at the end of Step 2 (triage) based on: number of files involved, clarity of error message, whether root cause is immediately visible, and number of hypotheses generated. If only 1 hypothesis with HIGH initial confidence → fast-path.
+# meta-debug
 
-## Step-by-Step Execution
+Debug the current user-reported failure.
 
-### Step 1 — Reproduce (Orchestrator, Fast)
+## Objective
 
-Print: `[Step 1/7] REPRODUCE`
+Find the root cause, apply the smallest safe fix, and prove it with the original reproducer or the closest deterministic check.
 
-**Reproduce the error before investigating.** A fix that cannot be preceded by a deterministic failing reproduction is not trustworthy.
+`REPRODUCE/ROUTE -> DIAGNOSE -> FIX -> VERIFY/OUTPUT`
 
-**1a. Determine the reproduction command:**
+For FAST work, do not print phase headers. For STANDARD and DEEP work, print one compact progress line per phase. Do not narrate skipped helpers or routine reads.
 
-| Error source | Reproduction command |
-|---|---|
-| Compiler output | Re-run the build command (`cargo check`, `tsc --noEmit`, `go build ./...`) |
-| Test failure | Re-run the specific failing test (`cargo test test_name`, `bunx vitest run path`, `pytest path::test`) |
-| Runtime error | Run the failing command/script as described by user |
-| Linter/clippy | Re-run the linter (`cargo clippy`, `eslint`, `mypy`) |
+## Profiles
 
-**1b. Execute and confirm:**
+Select the lowest profile that covers the uncertainty and blast radius.
 
-- Run the reproduction command via Bash
-- Confirm the same error appears in the output
-- If the error does NOT reproduce: inform the user, ask for additional context (environment, state, timing), do NOT proceed to Step 2
-- If the error reproduces: capture the exact output for the triage report, proceed to Step 2
+| Profile | Use when | Hypothesis cap | Total helper cap | In-progress checks |
+|---|---|---|---|---|
+| FAST | Syntax error, missing import, obvious type mismatch, or single failing assertion with a clear local cause | No register | 0 | 0 |
+| STANDARD | Clear stack trace, runtime error, config failure, dependency issue, or failing test requiring targeted investigation | 3 | 1 | 0 |
+| DEEP | Concurrency, performance regression, missing or misleading stack trace, cross-module state, code generation, architecture-level failure, or genuinely unfamiliar behavior | 4 | 2 | At most 1 discriminating check |
 
-**1c. Skip conditions** (reproduce step not needed):
+Helper caps cover the entire run. A failed helper still consumes its slot. File count alone does not select DEEP.
 
-- User pasted a complete error output and the error is clearly from a deterministic source (compiler, type checker)
-- The error is visible in the code itself (syntax error, obvious type mismatch)
-- The user explicitly says "I just ran this and got..."
-- The error is intermittent (user confirms it does not occur every run). In this case: skip Step 1, document as non-deterministic in the triage report, and focus Step 3 investigation on concurrency, caching, timing, and state initialization patterns
+## Phase 1 - REPRODUCE/ROUTE
 
-### Step 2 — Error Triage (Orchestrator, Instant)
+1. Extract the exact error, failing command, relevant file and line, stack frames, version, and environment clues from the user input.
+2. Choose the smallest deterministic reproducer: the named failing test, compiler target, command, request, or script.
+3. Accept a complete fresh compiler, type-checker, or test output as the failing baseline when rerunning it would add no information. Otherwise run the reproducer once before investigating.
+4. Confirm that the failure matches the report. Record only the core error and the command, not the full terminal transcript.
+5. Select FAST, STANDARD, or DEEP.
 
-Print: `[Step 2/7] TRIAGE`
+If the failure does not reproduce, do not guess. Check whether it is intermittent or environment-specific, then ask one targeted question for the missing state, input, timing, or command.
 
-Parse the error and classify it. This step uses NO agents — the orchestrator handles it directly.
+Do not run a full suite, broad build, lint, or type-check when a smaller command reproduces the failure.
 
-**2a. Extract signals from the error:**
+**Gate:** A failing baseline exists, or the exact missing reproduction input is known.
 
-| Signal | What to look for |
-|--------|-----------------|
-| File paths | Absolute or relative paths in the error output |
-| Line numbers | `:42`, `line 42`, `at line 42` |
-| Error codes | `E0308`, `TS2322`, `ENOENT`, HTTP status codes |
-| Library names | Package names in import paths or stack frames |
-| Versions | Version strings near library names in lock files or error text |
-| Function names | Top of stack trace, `at function_name` |
+## Phase 2 - DIAGNOSE
 
-**2b. Classify the error type:**
+Start with local evidence:
 
-| Classification | Indicators |
-|---------------|------------|
-| **Compile error** | Compiler output, syntax errors, type mismatches, missing imports |
-| **Type error** | Type checker output, generic constraint failures, inference failures |
-| **Runtime error** | Panic, exception, segfault, stack trace with runtime frames |
-| **Dependency issue** | Resolution failures, version conflicts, missing packages |
-| **Config issue** | Environment variables, config file parsing, path errors |
-| **Logic bug** | Wrong output, assertion failure, test mismatch (expected vs got) |
-| **Performance issue** | Timeout, OOM, slow query, high CPU |
-| **Test failure** | Test framework output, assertion messages, diff output |
+1. Read the failing file and the smallest surrounding function, type, fixture, or configuration needed to understand it.
+2. Follow user-code stack frames before framework or generated frames.
+3. Search the failing symbol, error code, assertion, or configuration key with targeted `rg`.
+4. Inspect the manifest, lockfile, or project configuration only when dependency version or setup is a plausible cause.
+5. Prefer observations that eliminate several explanations at once.
 
-**2b-extra. Compound error check:**
+FAST uses the visible cause directly and does not create a hypothesis register. STANDARD keeps at most three active hypotheses. DEEP keeps at most four. Maintain hypotheses internally and return the register only when diagnosis remains blocked.
 
-If the error output contains multiple distinct errors (e.g., N compiler errors, multiple test failures), determine if they share a root cause. If so, focus triage on the FIRST error only — later errors are often cascades. If they appear independent, triage them separately and note this in the report. Reference: `references/error-patterns.md` § Compound Errors.
+Use a helper only for one named gap local inspection cannot settle. Read [Helper Protocols](references/helper-protocols.md) only when delegation is required.
 
-**2c. Build the Hypothesis Register:**
+- Use `agent-explorer` only after 3-5 focused reads leave a cross-module flow, concurrency path, generated boundary, or state interaction unresolved.
+- Use `docs-researcher` only for one exact version-sensitive API, configuration, or migration question.
+- Use `web-researcher` only when a known external bug, platform issue, compiler issue, or undocumented behavior remains plausible after local and official documentation evidence.
 
-Initialize a structured diagnostic state (maintained throughout the pipeline):
+Run independent helpers in parallel when DEEP requires two distinct gaps. Pass only the failing baseline, active hypotheses, relevant versions or paths, and the named question. Do not retry a failed helper through another role.
 
-```
-## Hypothesis Register
-| # | Hypothesis | Status | Evidence For | Evidence Against |
-|---|-----------|--------|-------------|-----------------|
-| 1 | {hypothesis_1} | ACTIVE | | |
-| 2 | {hypothesis_2} | ACTIVE | | |
-| 3 | {hypothesis_3} | ACTIVE | | |
-```
-
-Generate 2-5 initial hypotheses based on the error classification and signals. Each hypothesis should be specific enough that a single test or observation could eliminate it.
-
-**2d. Detect regression signal:**
+Declare the root cause clear when direct evidence supports one causal explanation and the proposed fix target. Do not eliminate every theoretical alternative.
 
-Check for indicators that this is a regression (code that used to work):
-- User says "this was working before", "it broke after", "regression"
-- Error in code that hasn't been recently modified (check `git log --oneline -5 {file}`)
-- Test that was previously passing
+### Regression history
 
-If regression detected → trigger **git bisect shortcut** (see below).
+Use read-only `git log`, `git show`, `git diff`, or `git blame` first. Do not start `git bisect` automatically.
 
-**2e. Prepare the triage report** (used internally for Steps 3-4):
+Use `git bisect` only when all conditions hold:
+- The user explicitly approves it.
+- The tracked worktree is clean or the work is isolated safely.
+- A known good and known bad boundary exist.
+- The reproducer is deterministic, reasonably fast, and non-destructive.
+- The original branch and commit are recorded and `git bisect reset` will run on every exit path.
 
-```
-## Triage Report
-- Classification: {error_type}
-- Error message: {core_message}
-- Files involved: {file_paths_with_lines}
-- Error code: {code_if_any}
-- Libraries: {library_names_with_versions}
-- Stack trace depth: {number_of_frames}
-- Regression: {yes/no}
-- Hypotheses: {numbered_list}
-```
+If any condition fails, continue with local history and diff inspection.
 
-**2f. Detect codebase and libraries:**
-
-Run parallel Glob calls for manifest files:
-```
-Glob: Cargo.toml
-Glob: package.json
-Glob: pyproject.toml
-Glob: go.mod
-```
-
-If any manifest found → Step 3 is active.
-If libraries identified in triage → Step 4 is active.
-
-### Git Bisect Shortcut (Conditional, Regression Only)
-
-When a regression is detected in Step 2d, run `git bisect` to find the causal commit before doing full LLM analysis. This is O(log n) and dramatically reduces the search space.
-
-**Protocol:**
-1. Ask the user for the last known good commit (or use `git log` to estimate)
-2. Run `git bisect start HEAD {good_commit}`
-3. Use the reproduction command from Step 1 as the bisect oracle: `git bisect run {command}`
-4. The output identifies the exact commit that introduced the bug
-5. Read the commit diff to understand what changed — **save this diff as bug-inducing context** for Step 6 (Melbourne 2025: providing the regression-causing diff yields 1.8x more successful repairs)
-6. Run `git bisect reset` to restore the working tree
-7. Feed the causal commit info and diff into the hypothesis register as strong evidence
-8. Proceed to the decision gate with this evidence
-
-**Skip bisect if:**
-- No clear good/bad boundary exists
-- The repo has fewer than 10 commits
-- The error is not in user code (dependency/config issue)
-
-### Step 3 — Codebase Investigation (agent-explore)
-
-Print the appropriate header based on which steps are active:
-- Both Steps 3 AND 4 active: `[Step 3-4/7] INVESTIGATE + VERIFY DOCS (parallel)`
-- Only Step 3 active (no library identified): `[Step 3/7] INVESTIGATE`
-- Only Step 4 active (no codebase detected): `[Step 4/7] VERIFY DOCS`
-
-Spawn agent-explore to trace the error to its root cause:
-
-```
-Agent(
-  description: "Investigate {error_type} in codebase",
-  prompt: <see references/agent-orchestration.md for template>,
-  subagent_type: "agent-explore"
-)
-```
+**Gate:** The root cause and fix target are supported by concrete evidence, or a precise blocker is ready for the user.
 
-The agent investigates:
-- Read the files and lines referenced in the error
-- Trace the call chain that leads to the failure point (use call graph when available)
-- Map dependencies of the failing code (imports, types, modules)
-- Check for recent changes near the error (git blame/log if useful)
-- Identify the architectural context — is it a handler, middleware, model, test?
-- Report confidence level: HIGH / MEDIUM / LOW
-
-### Step 4 — Documentation Check (ctx7 CLI)
-
-Spawn a docs agent to verify API usage against official documentation via ctx7 CLI:
-
-```
-Agent(
-  description: "Check docs for {library}",
-  prompt: <see references/agent-orchestration.md for template>,
-  subagent_type: "general-purpose"
-)
-```
+## Phase 3 - FIX
 
-The agent checks:
-- Correct API signatures for functions involved in the error
-- Known breaking changes or migration notes for the library version
-- Required configuration or setup steps that may have been missed
-- Deprecation warnings for any APIs used in the failing code
+State the diagnosis in one or two sentences, then apply the smallest coherent fix.
 
-**Spawn Steps 3 and 4 in a SINGLE message** for true parallel execution.
+- Trace every changed line to the root cause.
+- Preserve local conventions and unrelated user changes.
+- Avoid opportunistic cleanup, broad refactors, dependency upgrades, suppressions, and speculative guards.
+- Choose the least invasive correct strategy when several options are equivalent.
+- Ask before changing a public API, architecture boundary, security policy, data model, or other hard-to-reverse contract.
 
-### Decision Gate — Is the Root Cause Clear?
+Add or update one focused regression test when the bug is a non-trivial logic or runtime failure, an existing test harness is nearby, and the test directly reproduces the broken boundary. Do not add a redundant test for compiler-detected syntax or type errors.
 
-After Steps 3-4 complete, update the hypothesis register with evidence from both agents. Then evaluate:
+Allow two fix attempts maximum:
+1. Apply the best-supported strategy.
+2. If focused verification fails and provides new evidence, use one fundamentally different strategy.
 
-**Update hypothesis register:**
-```
-| # | Hypothesis | Status | Evidence For | Evidence Against |
-|---|-----------|--------|-------------|-----------------|
-| 1 | {hypothesis} | CONFIRMED / ELIMINATED / ACTIVE | {from agent-explore/docs} | {contradictions} |
-```
+Never make a third attempt in the same trajectory. Stop with the evidence, attempted strategies, and remaining blocker.
 
-**Decision criteria:**
+**Gate:** The minimal fix is applied and ready for focused verification.
 
-- **Root cause identified (HIGH confidence)** → proceed to Step 6.
-  - agent-explore found the exact code causing the issue AND
-  - docs agent confirmed the correct API usage (or the error is not API-related)
-  - Only ONE hypothesis remains ACTIVE, all others ELIMINATED
+## Phase 4 - VERIFY/OUTPUT
 
-- **Root cause unclear (MEDIUM confidence)** → proceed to Step 5.
-  - The error doesn't match any obvious code issue
-  - The API usage appears correct but the error persists
-  - The error message is cryptic or underdocumented
-  - A known bug or platform-specific issue is suspected
-  - Multiple hypotheses still ACTIVE
+Rerun the exact reproducer used in Phase 1.
 
-- **Root cause unclear (LOW confidence)** → ask the user for more context.
-  - Print: `[Step 3-4/7 → ESCALATE] ROOT CAUSE UNCLEAR`
-  - No hypothesis has strong supporting evidence
-  - The error may be environment-specific, timing-dependent, or involve state not visible in the codebase
-  - Present what was found so far and ask targeted discriminating questions (questions that eliminate the maximum number of hypotheses)
+Run at most one adjacent check only when it covers a distinct regression risk:
+- A focused related test for changed shared behavior.
+- A package-level type or build check when the reproducer did not compile the changed path.
+- The newly added regression test when it differs from the original reproducer.
 
-- **All hypotheses eliminated (register exhausted)** → generate new hypotheses from remaining evidence.
-  - Print: `[Step 3-4/7 → REFRAME] ALL HYPOTHESES ELIMINATED`
-  - Re-examine agent outputs for overlooked signals
-  - Generate 2-3 new hypotheses from a different frame (e.g., if all code-level hypotheses failed, consider environment, timing, or data-level causes)
-  - If still no viable hypothesis after reframing → proceed to Step 5 (web research) regardless of confidence
+Do not automatically combine reproducer, full build, lint, type-check, and full test suite. Do not install packages, regenerate lockfiles, tidy manifests, start a development server, or modify environment state merely to verify a fix. Perform those actions only when they are the explicit reproducer or the user authorizes the required state change.
 
-### Step 5 — Web Research (agent-websearch, Conditional)
+If verification fails, return to Phase 3 only when the two-attempt budget has room and the failure added discriminating evidence. Otherwise stop.
 
-Print: `[Step 5/7] RESEARCH (conditional)`
+Return a compact receipt:
+- Root cause and evidence.
+- Files changed and why.
+- Exact verification commands and results.
+- Regression test added or intentionally omitted.
+- Remaining blocker or uncertainty, if any.
 
-ONLY run this step if Steps 3-4 did not resolve the issue.
+Do not print the full hypothesis register when the fix succeeds. Do not add generic prevention advice.
 
-```
-Agent(
-  description: "Search for {error_message}",
-  prompt: <see references/agent-orchestration.md for template>,
-  subagent_type: "agent-websearch"
-)
-```
-
-The agent searches for:
-- The exact error message + library name + version
-- GitHub issues mentioning this error
-- Stack Overflow solutions with high vote counts
-- Blog posts or changelogs that document this specific issue
-- Whether a patch or workaround exists
-
-### Step 6 — Fix Implementation (Orchestrator)
-
-Print: `[Step 6/7] FIX`
-
-Apply the fix based on all gathered evidence. Follow this protocol:
-
-**6a. Present the diagnosis:**
-
-```markdown
-## Root Cause
-[1-3 sentences explaining WHY the error occurred — the actual cause, not the symptom]
-
-## Evidence
-- [file:line — what was found there]
-- [Documentation reference — what the correct behavior should be]
-- [Web source — if Step 5 was needed]
-
-## Hypothesis Register (Final)
-| # | Hypothesis | Status | Key Evidence |
-|---|-----------|--------|-------------|
-| 1 | {winning hypothesis} | CONFIRMED | {evidence} |
-| 2 | {eliminated} | ELIMINATED | {why} |
-```
-
-**6b. Choose the fix strategy:**
-
-If multiple fixes exist, rank by:
-1. **Correctness** — does it fix the actual root cause, not just the symptom?
-2. **Safety** — minimal side effects, no regressions, preserves existing behavior
-3. **Simplicity** — least invasive change, fewest files modified
-
-Present the top strategy. If there are meaningful alternatives, list them briefly with trade-offs.
-
-For fix strategy ranking criteria and anti-patterns, see `references/fix-strategies.md`.
-
-**6c. Apply the fix with minimality constraints:**
-
-- Use Edit tool for surgical changes — do not rewrite files unnecessarily
-- Change ONLY what is necessary to fix the root cause
-- Preserve existing code style and conventions
-- **Minimality rule**: every modified line must have a justification traced to the root cause. If a line change cannot be justified, do not make it
-- **No drive-by fixes**: do not fix unrelated issues, improve style, or add comments to surrounding code
-
-**6d. Record the fix attempt** (for DDI circuit breaker):
-
-```
-Fix attempt #{n}: {one-line description of what was changed and why}
-```
-
-### Step 7 — Verify & Regress (Orchestrator)
-
-Print: `[Step 7/7] VERIFY & REGRESS`
-
-**7a. Verify the fix:**
-
-- If the error came from a compiler: re-run the build
-- If the error came from a test: re-run the failing test
-- If the error came from runtime: explain how to verify manually
-- If linting or type checking is available: run it
-
-**7b. DDI Circuit Breaker** (Debugging Decay Index):
-
-If verification fails (the fix didn't work):
-- **Attempt 1 failed** → try ONE alternative fix strategy (from 6b ranking). Do NOT iterate on the same approach.
-- **Attempt 2 failed** → STOP. Present what was tried, what failed, and escalate to the user with:
-  - The confirmed root cause (or best hypothesis)
-  - The two fix strategies that were attempted and why they failed
-  - A suggested next step that requires human judgment
-
-Research shows LLMs lose 60-80% of debugging capability within 2-3 attempts (DDI exponential decay). A strategic fresh start or human input is more effective than continued iteration.
-
-**7c. Codify regression test:**
-
-After the fix is verified, suggest a regression test if one doesn't exist:
-- A test that would FAIL without the fix and PASS with it
-- Cover the specific boundary condition or input that triggered the bug
-- One sentence explaining what the test guards against
-
-Only suggest this if:
-- The error came from a logic bug, runtime error, or test failure
-- A test file already exists for the affected module
-- The test is genuinely useful (not trivial or redundant)
-
-**7d. Suggest prevention:**
-
-One sentence on how to avoid this error in the future (only if there's a meaningful preventive measure — don't add noise).
-
-## Trajectory Smell Detection (Cross-Cutting)
-
-Monitor the debugging session for anti-patterns that predict failure (source: Google Passerine study, 66-67% failure correlation). If any smell is detected, immediately change strategy.
-
-| Smell | Detection | Action |
-|---|---|---|
-| **NO_TEST** | Agent never ran any test or build command after making a fix | STOP — run verification immediately before proceeding |
-| **NO_OP_CAT** | Re-reading files that were already read with no edits in between | STOP — you're going in circles. Formulate a new hypothesis |
-| **CONSECUTIVE_SEARCH** | 3+ sequential searches (Grep/Glob/Read) without editing | STOP — you have enough information. Decide and act |
-| **CONSECUTIVE_EDITS** | Repeated edits to the same file without testing | STOP — run the test before making more changes |
-
-These smells should trigger self-correction, not pipeline abort. The orchestrator should recognize the pattern and adjust.
-
-## Hard Rules
-
-1. Step 1 (reproduce) runs FIRST — no investigation without confirmed reproduction (unless skip conditions met).
-2. Step 2 (triage) is ALWAYS done by the orchestrator — no agent spawning for triage.
-3. Steps 3 and 4 run in PARALLEL — spawn both in a single message.
-4. Step 5 is CONDITIONAL — only run when Steps 3-4 don't resolve the issue.
-5. Step 6 runs AFTER all investigation is complete — never fix before understanding.
-6. Step 7 ALWAYS verifies — never claim a fix without running the reproduction command.
-7. DDI circuit breaker is MANDATORY — max 2 fix attempts, then escalate to user.
-8. Agent boundaries are strict — explore reads code, docs uses ctx7 CLI, websearch fetches URLs.
-9. Max 3 ctx7 CLI calls — docs agent must stay within the hard limit.
-10. Compress triage report before passing to agents (<300 words).
-11. Every diagnosis claim must trace to evidence (file:line, doc reference, or URL).
-12. Graceful degradation — if any agent fails, continue with available data and note the gap.
-13. Do NOT use TeamCreate — use simple Agent tool spawning for all agents.
-14. Maintain the hypothesis register throughout — update after every step, present in final diagnosis.
-15. Prefer discriminating observations — each diagnostic action should eliminate the maximum number of hypotheses.
-16. Print `[Step N/7]` progress headers before each step — NEVER skip progress indicators.
-17. Scale effort to error complexity — use the Effort Scaling table to determine fast-path vs full pipeline vs extended thinking.
-
-## Error Handling
-
-- agent-explore returns empty: the error may be in generated/external code — note this, proceed with Steps 4-5.
-- docs agent returns empty: the library may lack ctx7 coverage — note this, rely on web research.
-- agent-websearch returns empty: the error may be novel — apply best-effort diagnosis from Steps 3-4.
-- All agents fail: use the triage report and error message to provide the best guidance possible with an honest disclaimer.
-- No codebase detected: skip Step 3, rely on Steps 4-5 and the error message itself.
-- No library identified: skip Step 4, rely on Steps 3 and 5.
-- Reproduction fails (Step 1): the error may be non-deterministic — ask the user about environment, timing, state. Do NOT proceed without reproduction or user confirmation to skip.
-- Git bisect fails: the repo may have merge commits or non-linear history — skip bisect, proceed with normal investigation.
-
-## DO NOT
-
-- Skip reproduction and jump to investigation — reproduce first, investigate second.
-- Skip triage and jump straight to web searching — triage prevents wasted effort.
-- Suggest "just Google it" — every step must add diagnostic value.
-- Spawn all agents simultaneously — Steps 1-2 must complete first to inform Steps 3-4.
-- Run Step 5 unconditionally — web research is the fallback, not the default.
-- Include unsourced fix suggestions — every fix traces to evidence.
-- Over-fix — change only what is necessary, do not refactor surrounding code. Every modified line must be justified.
-- Hardcode language-specific patterns in the pipeline — use adaptive detection from triage signals.
-- Iterate more than 2 fix attempts — the DDI circuit breaker is mandatory. Escalate to user.
-- Re-read files without making edits — this is a trajectory smell (NO_OP_CAT). Decide and act.
-- Search 3+ times without editing — this is a trajectory smell (CONSECUTIVE_SEARCH). You have enough info.
-- Edit the same file repeatedly without running a test — this is a trajectory smell (CONSECUTIVE_EDITS). Test before editing again.
-- Skip verification after a fix — this is a trajectory smell (NO_TEST). Run the reproduction command immediately.
-
-## Constraints (Three-Tier)
-
-### ALWAYS
-- Reproduce the error before investigating (unless skip conditions met)
-- Maintain the hypothesis register throughout — update after every step
-- Run verification after every fix attempt
-- Compress triage report before passing to agents (<300 words)
-
-### ASK FIRST
-- Proceed with LOW confidence root cause (ask user for more context)
-- Apply fix when multiple equally viable strategies exist
-- Apply fix that modifies a public API signature (function parameters, return type, struct fields)
-
-### NEVER
-- Fix before understanding — investigate first, fix second
-- Iterate more than 2 fix attempts (DDI circuit breaker)
-- Re-read files without making edits (trajectory smell: NO_OP_CAT)
-- Over-fix — change only what is necessary, no drive-by fixes
+**Gate:** The original failure is resolved by focused evidence, or the unresolved state is reported honestly after the capped attempts.
 
 ## Done When
 
-- [ ] Error reproduced (or skip conditions documented)
-- [ ] Triage report produced with hypothesis register
-- [ ] Root cause identified with HIGH confidence (or escalated to user)
-- [ ] Fix applied with minimality constraints (every modified line justified)
-- [ ] Verification passed — reproduction command now succeeds
-- [ ] Hypothesis register finalized (CONFIRMED/ELIMINATED for all hypotheses)
-- [ ] Regression test suggested (if applicable)
+- [ ] The failure was reproduced or a valid fresh baseline was accepted.
+- [ ] The root cause is supported by local, documentation, or current external evidence.
+- [ ] The fix is minimal and within scope.
+- [ ] The original reproducer passes after the fix.
+- [ ] At most one distinct adjacent check was added.
+- [ ] Helper and fix-attempt caps were respected.
 
-## References
+## Error Handling
 
-- [Error Patterns](references/error-patterns.md) — common error pattern taxonomy, diagnosis heuristics per classification, and language-adaptive signal extraction
-- [Fix Strategies](references/fix-strategies.md) — fix strategy ranking criteria, common fix anti-patterns, and verification protocols
-- [Agent Orchestration](references/agent-orchestration.md) — exact Agent tool parameters, prompt templates, and coordination rules for all three agents
-- [Research Sources](references/research-sources.md) — academic papers and industry sources backing the pipeline design
-- [Agent Boundaries](@~/.claude/skills/_shared/agent-boundaries.md) — shared agent delegation rules, call budgets, authority hierarchy
-- [Three-Tier Constraints](@~/.claude/skills/_shared/three-tier-constraints.md) — ALWAYS/ASK FIRST/NEVER model
+| Scenario | Action |
+|---|---|
+| Reproducer unavailable | Ask for one missing command, input, environment fact, or state transition |
+| Failure is intermittent | Preserve available evidence, investigate timing or state, and avoid claiming verification |
+| Helper fails | Continue from sufficient local evidence or report the named gap |
+| Root cause remains low-confidence | Stop before editing and ask one discriminating question |
+| First fix fails | Use new evidence for one different strategy |
+| Second fix fails | Stop and report both attempts with the remaining blocker |
+| Verification requires state mutation | Request approval unless the action was already the explicit user-provided reproducer |
+
+## Constraints
+
+- **Always:** Reproduce or accept a fresh deterministic baseline, inspect locally first, keep hypotheses and helpers bounded, apply the smallest fix, and rerun the exact reproducer.
+- **Never:** Launch every helper, run automatic `git bisect`, perform broad verification by default, install or regenerate dependencies for convenience, edit with low-confidence diagnosis, repeat the same failed strategy, exceed two fix attempts, or hide an unresolved failure.
+
+## Examples
+
+- `/meta-debug TS2322 in src/auth/session.ts after upgrading the auth package`
+- `/meta-debug cargo test parser_handles_empty_input fails with an index panic`
+- `/meta-debug The worker occasionally deadlocks after cancellation`
+
+## Reference
+
+- [Helper Protocols](references/helper-protocols.md): load only for delegated diagnosis.

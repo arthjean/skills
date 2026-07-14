@@ -1,4 +1,4 @@
-# PRD Template — Exact Format for /implement-story and /review-story Compatibility
+# PRD Template - Exact Format for /implement-epic and /review-story Compatibility
 
 ## Complete PRD Template
 
@@ -299,16 +299,17 @@ Each story carries inline metadata:
 ### Status Transitions
 
 ```
-TODO → IN_PROGRESS → IN_REVIEW → DONE
-  |                      |
-  └→ BLOCKED ←───────────┘
+TODO → IN_PROGRESS → IN_REVIEW
+  |         |              |
+  |         └──────────────→ DONE
+  └→ BLOCKED
   |
   └→ CANCELLED
 ```
 
-- `TODO` → `IN_PROGRESS`: when `/implement-story` starts Phase 4
-- `IN_PROGRESS` → `IN_REVIEW`: when implementation passes quality gates
-- `IN_REVIEW` → `DONE`: when `/review-story` Phase 5 passes (zero CRITICAL/HIGH)
+- `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the matching story slice in Phase 4
+- `IN_PROGRESS` → `IN_REVIEW`: when a story still needs manual verification after `/implement-epic` validation
+- `IN_PROGRESS` or `IN_REVIEW` → `DONE`: when `/implement-epic` Phase 8 verifies every story criterion and no manual verification remains
 - Any → `BLOCKED`: when a dependency is not met
 - `BLOCKED` → `TODO`: when blocker is resolved
 - Any → `CANCELLED`: manual decision
@@ -334,7 +335,7 @@ TODO → IN_PROGRESS → IN_REVIEW → DONE
 /write-prd                    → produces PRD + status.json
      |
      v
-/implement-story [prd] [US-NNN]  → implements one story, updates status
+/implement-epic [prd] [EP-NNN]   → implements one epic through ordered story slices, updates roll-up status
      |
      v
 /review-story [prd] [US-NNN?]    → reviews implementation, updates status

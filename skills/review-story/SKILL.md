@@ -144,11 +144,11 @@ Look for a status JSON file alongside the PRD:
 
 Research best practices before judging code. See [Review Protocols](references/review-protocols.md) for exact prompt templates.
 
-**2a.** Spawn `agent-websearch` (model: sonnet) — research best practices, anti-patterns, security considerations for the feature area. Wait for completion, compress to <500 words.
+**2a.** Spawn `web-researcher` to research current best practices, anti-patterns, and security considerations for the feature area. Wait for completion and compress to fewer than 500 words.
 
 **2b.** Detect codebase manifests (Cargo.toml, package.json, pyproject.toml, go.mod).
 
-**2c.** Spawn `agent-explore` + docs agent (model: sonnet) **in parallel in a SINGLE message**. Explore codebase patterns and fetch library documentation via ctx7 CLI.
+**2c.** Spawn `explorer` and `docs-researcher` in parallel when both routes are needed. Explore codebase patterns and fetch version-sensitive library documentation via ctx7 CLI.
 
 **2d.** Synthesize all findings into a compressed review brief (<500 words): best practices, pitfalls, correct API usage, security considerations. This brief is passed to Phase 3 and 4 agents.
 
@@ -172,7 +172,7 @@ Run deterministic checks (lint, format, type-check) before spending AI tokens. S
 
 ### Phase 3 — CODE REVIEW (parallel with Phase 4)
 
-Spawn agent-explore with the Code Review template from review-protocols.md. The review agent checks **8 categories** in priority order: (1) Acceptance Criteria Compliance, (2) Correctness, (3) Architecture & Design, (4) Error Handling & Logging, (5) Quality, (6) Performance, (7) Tests, (8) Best Practices from Phase 2 research.
+Spawn explorer with the Code Review template from review-protocols.md. The review agent checks **8 categories** in priority order: (1) Acceptance Criteria Compliance, (2) Correctness, (3) Architecture & Design, (4) Error Handling & Logging, (5) Quality, (6) Performance, (7) Tests, (8) Best Practices from Phase 2 research.
 
 See [Review Protocols](references/review-protocols.md) — Phase 3 prompt template for the full checklist with detailed sub-items per category.
 
@@ -193,7 +193,7 @@ Output: Structured report with MUST_FIX / SHOULD_FIX / CONSIDER / OK findings. E
 
 ### Phase 4 — SECURITY REVIEW (parallel with Phase 3)
 
-Spawn agent-explore with the Security template from review-protocols.md. The security agent follows the `/security-review` protocol with extended coverage:
+Spawn explorer with the Security template from review-protocols.md. The security agent follows the `/security-review` protocol with extended coverage:
 
 **Layer 1 — SAST (Source Analysis):**
 1. Read all changed files
@@ -288,7 +288,7 @@ Fix validated issues from Phases 3-4, using risk-tiered autonomy. See [Remediati
 - **Risk tiers** (5c): LOW (auto-fix), MEDIUM (fix + show diff), HIGH (await confirmation)
 - **Max 3 iterations** (5d): fix → re-test → fix regressions. After 3: escalate to user
 - **Scope creep guard** (5e): fix touches files outside scope → ask user first
-- **Exit verification** (5f): fresh-context `agent-explore` verifies MUST_FIX/CRITICAL/HIGH fixes resolved
+- **Exit verification** (5f): fresh-context `explorer` verifies MUST_FIX/CRITICAL/HIGH fixes resolved
 - **Escalation** (5g): remaining issues → present to user with context
 
 **GATE:** Zero CRITICAL/HIGH/MUST_FIX issues remaining. Quality gates pass. Static analysis clean. SHOULD_FIX items reported as observations (not blocking).
@@ -351,7 +351,7 @@ When no story ID is provided, review the entire PRD:
 1. Research (Phase 2) MANDATORY before review. Static analysis BEFORE AI review.
 2. Phases 3+4 run in PARALLEL (single message). Phase 4.5 VALIDATE is MANDATORY before remediation.
 3. Max 3 fix iterations. Detect oscillation (A breaks B, B breaks A) — stop, never spin.
-4. Review agents are READ-ONLY (`agent-explore`). NEVER commit or push.
+4. Review agents are READ-ONLY (`explorer`). NEVER commit or push.
 5. SHOULD_FIX items are observations only — NEVER enter remediation loop. Only MUST_FIX + CRITICAL/HIGH + static errors enter the loop.
 6. Findings: max 4 per file, max 3 per sub-category. Target 2-4 high-value findings, suppress Tier 3.
 7. Scope: diff + 1 hop only. Out-of-scope findings classified as "TRACKED."
@@ -391,7 +391,7 @@ When no story ID is provided, review the entire PRD:
 
 ## References
 
-- [Review Protocols](references/review-protocols.md) — exact Agent tool parameters, prompt templates, validation protocol, and expected output formats for each phase
+- [Review Protocols](references/review-protocols.md) - provider-neutral role routing, prompt templates, validation protocol, and expected output formats for each phase
 - [Output Format](references/output-format.md) — Phase 6 summary report template with all tables and sections
 - [Static Analysis Protocol](references/static-analysis-protocol.md) — language-specific linter/formatter commands, type checking, git blame hotspots, risk hypotheses
 - [Remediation Protocol](references/remediation-protocol.md) — scope guard, triage table, risk-tiered autonomy, fix loop, exit verification

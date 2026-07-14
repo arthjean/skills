@@ -73,7 +73,7 @@ If any fix modifies files not in the original findings list, log a warning but p
 
 ## 5f — Fresh-Context Exit Verification
 
-After all fix iterations, spawn a lightweight `agent-explore` subagent scoped only to files modified during remediation. Verify each **MUST_FIX/CRITICAL/HIGH** fix actually resolves its flagged issue and no new CRITICAL/HIGH issues were introduced. **Do NOT re-evaluate SHOULD_FIX items** — they have no mechanical oracle and re-evaluation produces non-deterministic results. This prevents self-validation bias (Actor/Critic isolation extends to remediation verification).
+After all fix iterations, spawn a lightweight `explorer` subagent scoped only to files modified during remediation. Verify each **MUST_FIX/CRITICAL/HIGH** fix actually resolves its flagged issue and no new CRITICAL/HIGH issues were introduced. **Do NOT re-evaluate SHOULD_FIX items** — they have no mechanical oracle and re-evaluation produces non-deterministic results. This prevents self-validation bias (Actor/Critic isolation extends to remediation verification).
 
 ## 5g — Escalation (after 3 iterations)
 

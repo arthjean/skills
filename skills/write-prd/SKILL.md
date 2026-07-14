@@ -38,7 +38,7 @@ Extract: **Domain** (area: auth, payments, UI, data pipeline...), **Keywords** (
 **1c. Scope detection — fast mode check:**
 
 If the implied scope is very small (likely < 3 stories — a single endpoint, config change, or isolated component), switch to FAST MODE:
-- Phase 2: agent-websearch only (skip explore + docs)
+- Phase 2: web-researcher only (skip agent-explorer and docs-researcher)
 - Phase 3: merge Rounds 1-3 into a single focused round, keep Edge Cases + Quality Gates + Devil's Advocate
 - Phase 4-6: unchanged
 
@@ -54,15 +54,15 @@ Run parallel Glob calls: `Cargo.toml`, `package.json`, `pyproject.toml`, `go.mod
 
 Deep research BEFORE asking a single question.
 
-**2a. Spawn agent-websearch** with the Web Research Prompt Template from [references/brainstorm-protocols.md](references/brainstorm-protocols.md). Scope guard: 8-10 web searches max, prioritize breadth. If results are thin, proceed and note gaps.
+**2a. Spawn web-researcher** with the Web Research Prompt Template from [references/brainstorm-protocols.md](references/brainstorm-protocols.md). Scope guard: 4-6 targeted web searches max, prioritizing primary sources and breadth. If results are thin, proceed and note gaps.
 
 Wait for completion. Compress key findings into the Compressed Research Summary Format from brainstorm-protocols.md (target: < 300 words internal, < 500 words for user presentation).
 
-**2b. Spawn agent-explore + docs agent in parallel (if applicable):**
+**2b. Spawn agent-explorer and docs-researcher in parallel (if applicable):**
 
-If codebase detected: read the Codebase Exploration Prompt Template from brainstorm-protocols.md, substitute the feature description and compressed web research, and spawn agent-explore. **Scope guard:** max 15-20 file reads — map architecture, don't read implementations.
+If codebase detected: read the Codebase Exploration Prompt Template from brainstorm-protocols.md, substitute the feature description and compressed web research, and spawn agent-explorer. **Scope guard:** max 15-20 file reads; map architecture without reading unrelated implementations.
 
-If libraries identified from research: read the Documentation Lookup Prompt Template from brainstorm-protocols.md and spawn a general-purpose agent with ctx7 CLI instructions. **Scope guard:** max 3 ctx7 calls (cost/time budget — prioritize the most relevant libraries).
+If libraries are identified from research: read the Documentation Lookup Prompt Template from brainstorm-protocols.md and spawn docs-researcher. **Scope guard:** max 3 ctx7 calls; prioritize the most relevant libraries.
 
 Spawn both in a SINGLE message for parallel execution.
 
@@ -165,7 +165,7 @@ Create `tasks/` if it doesn't exist.
 
 **6a. Mark as READY:** Set status to `"READY"` in the JSON file.
 
-**6b. Display summary** — print epics/stories table, quality gates, and next steps (`/implement-story`, `/review-story`).
+**6b. Display summary** - print epics/stories table, quality gates, and next steps (`/implement-epic`, `/review-story`).
 
 **GATE:** Files saved. Summary displayed.
 
@@ -185,9 +185,9 @@ Create `tasks/` if it doesn't exist.
 
 | Error | Action |
 |---|---|
-| agent-websearch fails | Continue with model knowledge, note reduced quality |
-| agent-explore fails | Skip codebase-specific decisions, note constraints unverified |
-| docs agent fails | Rely on web research for library info |
+| web-researcher fails | Continue with model knowledge, note reduced quality |
+| agent-explorer fails | Skip codebase-specific decisions, note constraints unverified |
+| docs-researcher fails | Rely on official web documentation and note the gap |
 | >20 stories | Auto-split into phased releases |
 | No codebase detected | Skip explore, omit Files NOT to Modify |
 | Empty $ARGUMENTS | Fail with usage error |

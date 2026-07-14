@@ -2,29 +2,31 @@
 
 ## Agent Spawning Rules
 
-All agents are spawned using the `Agent` tool:
+These are provider-neutral, declarative subagent briefs. They are not literal tool calls:
 
 ```
-Agent(
+SubagentBrief(
   description: "3-5 word summary",
   prompt: "Detailed instructions",
-  subagent_type: "agent-type"
+  preferred_role: "role-name"
 )
 ```
 
-**Subagent type assignments:**
+**Preferred role assignments:**
 
-| Phase | Agent | subagent_type |
+| Phase | Agent | preferred_role |
 |-------|-------|---------------|
-| 2a | Web research | `agent-websearch` |
-| 2c | Codebase exploration | `agent-explore` |
-| 2c | Documentation lookup | `agent-docs` (ctx7 CLI) |
-| 3 | Code review | `agent-explore` |
-| 4 | Security audit | `agent-explore` |
+| 2a | Web research | `web-researcher` |
+| 2c | Codebase exploration | `explorer` |
+| 2c | Documentation lookup | `docs-researcher` (ctx7 CLI) |
+| 3 | Code review | `explorer` |
+| 4 | Security audit | `explorer` |
 
-Review and security agents use `agent-explore` for read-only access (no Edit/Write).
+Review and security agents use `explorer` for read-only access (no Edit/Write).
 
-**Model tiering:** Use `model: "sonnet"` for worker subagents (Phase 2a websearch, 2c explore/docs, 3 review, 4 security). The orchestrator (Phases 1, 2d synthesis, 4.5 validation, 5 remediation, 6 summary) runs on Opus. This reduces cost ~40% while maintaining quality where it matters — synthesis and fix decisions.
+**Model policy:** Do not hard-code provider-specific model names. Custom roles use their TOML effort settings, built-in roles use the current Codex configuration, and the orchestrator inherits the session model. Control cost through conditional spawning, bounded scope, and output budgets.
+
+Map each brief to the launcher exposed in the current session. Use a safe task name and pass the prompt as the message. Set the preferred role only when role selection is supported; otherwise follow the direct-tool fallback in `C:\Users\Arthur\.codex\AGENTS.md`.
 
 **Actor/Critic isolation:** The review agent (Critic) and the orchestrator who wrote/fixed the code (Actor) operate in completely separate sessions. The Critic has NO access to the Actor's reasoning chain. This prevents agreeableness bias — where the model confirms its own work rather than genuinely evaluating it.
 
@@ -147,7 +149,7 @@ This is a READ-ONLY research task. Do NOT modify any files.
 {library_list_with_versions}
 
 ## ctx7 CLI Protocol
-Two-step process via Bash:
+Two-step process in the available shell:
 1. bunx ctx7@latest library {library_name} "{query}"  — resolve library ID
 2. bunx ctx7@latest docs {library_id} "{query}"       — fetch documentation
 
@@ -478,16 +480,16 @@ Only CONFIRMED and PARTIAL findings with HIGH or MEDIUM confidence enter Phase 5
 When both codebase and libraries are detected, spawn in a SINGLE message:
 
 ```
-Agent(
+SubagentBrief(
   description: "Explore codebase patterns",
   prompt: <explore template>,
-  subagent_type: "agent-explore"
+  preferred_role: "explorer"
 )
 
-Agent(
+SubagentBrief(
   description: "Fetch docs for {library}",
   prompt: <docs template>,
-  subagent_type: "agent-docs"
+  preferred_role: "docs-researcher"
 )
 ```
 
@@ -496,16 +498,16 @@ Agent(
 Always spawn both in a SINGLE message:
 
 ```
-Agent(
+SubagentBrief(
   description: "Code review for {story/PRD}",
   prompt: <Phase 3 template>,
-  subagent_type: "agent-explore"
+  preferred_role: "explorer"
 )
 
-Agent(
+SubagentBrief(
   description: "Security audit for {story/PRD}",
   prompt: <Phase 4 template>,
-  subagent_type: "agent-explore"
+  preferred_role: "explorer"
 )
 ```
 
@@ -543,7 +545,7 @@ Target: <500 words. Do NOT include URLs or source attributions — the review ag
 |-------|------|
 | 1. INTAKE | Parse PRD, map files, pre-filter, size check — orchestrator handles directly |
 | 2. RESEARCH | Spawn agents, compress, synthesize — orchestrator orchestrates |
-| 2.5. STATIC | Run linter/formatter/type-checker — orchestrator runs directly via Bash |
+| 2.5. STATIC | Run linter/formatter/type-checker; orchestrator runs directly in the available shell |
 | 3. REVIEW | Spawn read-only agent — orchestrator does NOT review |
 | 4. SECURITY | Spawn read-only agent — orchestrator does NOT audit |
 | 4.5. VALIDATE | Verify each finding via Grep/Read — orchestrator handles directly |

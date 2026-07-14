@@ -140,7 +140,7 @@ We're PLANNING a feature, not implementing yet. Look up:
 4. Configuration or setup requirements we should plan for
 
 ## ctx7 CLI Protocol
-Two-step process via Bash:
+Two-step process in the available shell:
 1. bunx ctx7@latest library {library_name} "{query}"  — resolve library ID
 2. bunx ctx7@latest docs {library_id} "{query}"       — fetch documentation
 
@@ -340,8 +340,8 @@ Which categories apply to your feature?
 Final essential question — what quality commands must pass for every story?
 
 1. Build/type checking:
-   A. pnpm typecheck && pnpm lint
-   B. npm run typecheck && npm run lint
+   A. bun run typecheck && bun run lint
+   B. bun run check
    C. cargo check && cargo clippy && cargo test
    D. go build ./... && go vet ./...
    E. Other: [specify]
