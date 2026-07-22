@@ -1,10 +1,17 @@
 #![forbid(unsafe_code)]
 
+pub mod adoption;
 pub mod app;
 pub mod catalog;
 pub mod cli;
+pub mod engine;
+pub mod operations;
 pub mod plain;
+pub mod plan;
+pub mod provider;
 pub mod provider_health;
+pub mod receipt;
+pub mod transaction;
 pub mod ui;
 
 use std::ffi::OsStr;

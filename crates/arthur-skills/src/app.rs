@@ -1,19 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Provider {
-    Claude,
-    Codex,
-}
-
-impl Provider {
-    pub const ALL: [Self; 2] = [Self::Claude, Self::Codex];
-
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Claude => "Claude Code",
-            Self::Codex => "Codex",
-        }
-    }
-}
+pub use crate::provider::ProviderId as Provider;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
