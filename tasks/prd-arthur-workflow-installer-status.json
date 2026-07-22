@@ -17,10 +17,10 @@
     {
       "id": "EP-002",
       "title": "Planification, ownership et transactions",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 5
     },
     {
       "id": "EP-003",
@@ -100,61 +100,61 @@
       "id": "US-005",
       "title": "Résoudre les racines et stratégies provider",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-004"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T12:10:18Z",
+      "completed_at": "2026-07-22T13:47:24Z",
+      "reviewed_at": "2026-07-22T13:47:24Z"
     },
     {
       "id": "US-006",
       "title": "Inspecter l'état et produire un plan déterministe",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-005"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T12:27:13Z",
+      "completed_at": "2026-07-22T13:47:24Z",
+      "reviewed_at": "2026-07-22T13:47:24Z"
     },
     {
       "id": "US-007",
       "title": "Construire le commit transactionnel par racine",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-006"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T12:29:29Z",
+      "completed_at": "2026-07-22T13:47:24Z",
+      "reviewed_at": "2026-07-22T13:47:24Z"
     },
     {
       "id": "US-008",
       "title": "Gérer rollback, signaux et récupération après crash",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-007"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T12:34:08Z",
+      "completed_at": "2026-07-22T13:47:24Z",
+      "reviewed_at": "2026-07-22T13:47:24Z"
     },
     {
       "id": "US-009",
       "title": "Adopter une installation existante entrée par entrée",
       "epic": "EP-002",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-006", "US-007", "US-008"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T12:48:58Z",
+      "completed_at": "2026-07-22T13:47:24Z",
+      "reviewed_at": "2026-07-22T13:47:24Z"
     },
     {
       "id": "US-010",
