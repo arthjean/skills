@@ -11,7 +11,7 @@ Use this reference only when the native CLI does not cover the operation or when
 ## Invocation
 
 ```bash
-VERCEL_SKILL_DIR=/home/arthur/.agents/skills/vercel-cli
+VERCEL_SKILL_DIR="${VERCEL_SKILL_DIR:-$HOME/.agents/skills/vercel-cli}"
 
 bunx vercel@latest api /v2/user
 bunx vercel@latest api /v9/projects --scope <team> --paginate

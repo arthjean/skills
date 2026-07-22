@@ -9,10 +9,10 @@ Operate PostHog through the official `@posthog/cli` agent API. Keep the bundled 
 
 ## Operating contract
 
-1. Set the absolute directory containing this `SKILL.md` as `POSTHOG_SKILL_DIR`. In Arthur's installation:
+1. Set the absolute directory containing this `SKILL.md` as `POSTHOG_SKILL_DIR`. In a standard user installation:
 
    ```bash
-   POSTHOG_SKILL_DIR=/home/arthur/.agents/skills/posthog-cli
+   POSTHOG_SKILL_DIR="${POSTHOG_SKILL_DIR:-$HOME/.agents/skills/posthog-cli}"
    ```
 
 2. Keep the working directory in the user's project. The helpers discover the nearest `.env.local` or `.env` from `$PWD`; changing into the skill directory selects the wrong context.

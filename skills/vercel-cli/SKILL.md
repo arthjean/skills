@@ -9,10 +9,10 @@ Operate Vercel through `bunx vercel@latest` and the bundled shell helpers. Keep 
 
 ## Operating contract
 
-1. Set the absolute directory containing this `SKILL.md` as `VERCEL_SKILL_DIR`. In Arthur's installation:
+1. Set the absolute directory containing this `SKILL.md` as `VERCEL_SKILL_DIR`. In a standard user installation:
 
    ```bash
-   VERCEL_SKILL_DIR=/home/arthur/.agents/skills/vercel-cli
+   VERCEL_SKILL_DIR="${VERCEL_SKILL_DIR:-$HOME/.agents/skills/vercel-cli}"
    ```
 
 2. Do not `cd` into the skill directory before running Vercel commands. The current project directory determines the active `.vercel/project.json` context.

@@ -5,7 +5,7 @@ Read this file only when translating a workflow that names Vercel MCP tools. MCP
 Assume:
 
 ```bash
-VERCEL_SKILL_DIR=/home/arthur/.agents/skills/vercel-cli
+VERCEL_SKILL_DIR="${VERCEL_SKILL_DIR:-$HOME/.agents/skills/vercel-cli}"
 export VERCEL_TOKEN=vcp_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 

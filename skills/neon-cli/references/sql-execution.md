@@ -19,7 +19,7 @@ Use the helpers when output must be normalized, a transaction file must be appli
 Set the skill directory once:
 
 ```bash
-NEON_SKILL_DIR=/home/arthur/.agents/skills/neon-cli
+NEON_SKILL_DIR="${NEON_SKILL_DIR:-$HOME/.agents/skills/neon-cli}"
 ```
 
 Single statement:

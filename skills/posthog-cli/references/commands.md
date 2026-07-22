@@ -3,7 +3,7 @@
 Set the skill directory once while keeping the current working directory in the user's project:
 
 ```bash
-POSTHOG_SKILL_DIR=/home/arthur/.agents/skills/posthog-cli
+POSTHOG_SKILL_DIR="${POSTHOG_SKILL_DIR:-$HOME/.agents/skills/posthog-cli}"
 ```
 
 ## Official `@posthog/cli`

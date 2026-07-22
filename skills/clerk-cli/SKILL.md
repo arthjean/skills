@@ -9,10 +9,10 @@ Operate Clerk through `bunx clerk@latest --mode agent` and the bundled Bash help
 
 ## Operating contract
 
-1. Set the absolute directory containing this `SKILL.md` as `CLERK_SKILL_DIR`. In Arthur's installation:
+1. Set the absolute directory containing this `SKILL.md` as `CLERK_SKILL_DIR`. In a standard user installation:
 
    ```bash
-   CLERK_SKILL_DIR=/home/arthur/.agents/skills/clerk-cli
+   CLERK_SKILL_DIR="${CLERK_SKILL_DIR:-$HOME/.agents/skills/clerk-cli}"
    ```
 
 2. Do not `cd` into the skill directory. Invoke helpers with `bash "$CLERK_SKILL_DIR/scripts/<script>.sh"` from the target project.

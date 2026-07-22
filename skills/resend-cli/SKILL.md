@@ -9,10 +9,10 @@ Operate Resend through `bunx --bun resend-cli@latest`. Keep the working director
 
 ## Operating contract
 
-1. Set the absolute directory containing this `SKILL.md` as `RESEND_SKILL_DIR`. In Arthur's installation:
+1. Set the absolute directory containing this `SKILL.md` as `RESEND_SKILL_DIR`. In a standard user installation:
 
    ```bash
-   RESEND_SKILL_DIR=/home/arthur/.agents/skills/resend-cli
+   RESEND_SKILL_DIR="${RESEND_SKILL_DIR:-$HOME/.agents/skills/resend-cli}"
    ```
 
 2. Do not `cd` into the skill directory. Invoke bundled scripts with `bash "$RESEND_SKILL_DIR/scripts/<script>.sh"` from the target project.

@@ -5,7 +5,7 @@ This is the endpoint snapshot used by the bundled helpers. It is not a permanent
 Keep the user's project as the working directory and set:
 
 ```bash
-POSTHOG_SKILL_DIR=/home/arthur/.agents/skills/posthog-cli
+POSTHOG_SKILL_DIR="${POSTHOG_SKILL_DIR:-$HOME/.agents/skills/posthog-cli}"
 ```
 
 ## Auth

@@ -9,10 +9,10 @@ Operate Neon through `bunx neonctl@latest`, `psql`, and the bundled shell helper
 
 ## Operating contract
 
-1. Use the absolute directory containing this `SKILL.md` as `NEON_SKILL_DIR`. In Arthur's installation:
+1. Use the absolute directory containing this `SKILL.md` as `NEON_SKILL_DIR`. In a standard user installation:
 
    ```bash
-   NEON_SKILL_DIR=/home/arthur/.agents/skills/neon-cli
+   NEON_SKILL_DIR="${NEON_SKILL_DIR:-$HOME/.agents/skills/neon-cli}"
    ```
 
 2. Do not `cd` into the skill directory before running Neon commands. The current project directory determines which `.neon` context is active.
