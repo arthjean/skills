@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "provider": "codex",
+  "provider_version": "0.144.6",
+  "format": "toml",
+  "required_fields": [
+    "name",
+    "description",
+    "model",
+    "model_reasoning_effort",
+    "default_permissions",
+    "web_search",
+    "developer_instructions",
+    "mcp_servers",
+    "permissions"
+  ],
+  "optional_fields": [],
+  "models": ["gpt-5.6-sol"],
+  "efforts": ["low", "medium"],
+  "permission_sections": ["filesystem", "network"],
+  "mcp_fields": ["enabled", "url", "bearer_token_env_var", "command"]
+}

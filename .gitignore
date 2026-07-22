@@ -11,3 +11,8 @@ Thumbs.db
 
 # Local agent configuration
 .codex/
+
+# Rust build and coverage output
+target/
+coverage/
+*.profraw

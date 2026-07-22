@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "provider": "claude",
+  "provider_version": "2.1.217",
+  "format": "markdown-frontmatter",
+  "required_fields": [
+    "name",
+    "description",
+    "tools",
+    "permissionMode",
+    "maxTurns",
+    "model",
+    "effort",
+    "color"
+  ],
+  "optional_fields": [],
+  "models": ["claude-fable-5[1m]"],
+  "efforts": ["low", "medium"],
+  "permission_modes": ["dontAsk"],
+  "colors": ["blue", "cyan", "green"],
+  "tools": ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "Bash"]
+}
