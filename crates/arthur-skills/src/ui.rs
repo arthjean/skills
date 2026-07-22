@@ -1,17 +1,35 @@
 use std::io;
+use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::Line;
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::text::{Line, Text};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Widget, Wrap};
 use ratatui::{Frame, TerminalOptions, Viewport};
 
-use crate::app::{Action, App, Outcome, Provider};
+use crate::app::{Action, App, Outcome, Provider, Step};
+use crate::transaction::{SIGINT_EXIT_CODE, SignalFlags};
 
-const INLINE_HEIGHT: u16 = 10;
+const INLINE_HEIGHT: u16 = 16;
 
-pub fn run(mut app: App) -> io::Result<()> {
+#[derive(Debug, Eq, PartialEq)]
+pub enum UiExit {
+    Selected(Vec<Provider>),
+    Confirmed,
+    Cancelled,
+    Interrupted(u8),
+}
+
+pub fn select_providers(app: App, signals: &SignalFlags) -> io::Result<UiExit> {
+    run(app, false, signals)
+}
+
+pub fn confirm_plan(app: App, signals: &SignalFlags) -> io::Result<UiExit> {
+    run(app, true, signals)
+}
+
+fn run(mut app: App, append_snapshot: bool, signals: &SignalFlags) -> io::Result<UiExit> {
     let options = TerminalOptions {
         viewport: Viewport::Inline(INLINE_HEIGHT),
     };
@@ -22,32 +40,81 @@ pub fn run(mut app: App) -> io::Result<()> {
             return Err(error);
         }
     };
-
-    let result = run_loop(&mut terminal, &mut app);
+    let colors = std::env::var_os("NO_COLOR").is_none();
+    let result = (|| {
+        if append_snapshot {
+            let text = review_text(&app);
+            terminal.insert_before(INLINE_HEIGHT, |buffer| {
+                Paragraph::new(text)
+                    .wrap(Wrap { trim: true })
+                    .render(buffer.area, buffer);
+            })?;
+        }
+        run_loop(&mut terminal, &mut app, colors, signals)
+    })();
     ratatui::restore();
     result
 }
 
-fn run_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> io::Result<()> {
+fn run_loop(
+    terminal: &mut ratatui::DefaultTerminal,
+    app: &mut App,
+    colors: bool,
+    signals: &SignalFlags,
+) -> io::Result<UiExit> {
     loop {
-        terminal.draw(|frame| render(frame, app))?;
+        terminal.draw(|frame| render(frame, app, colors))?;
         if run_debug_probe()? {
-            return Ok(());
+            return Ok(UiExit::Cancelled);
         }
 
-        let action = action_for_event(event::read()?);
+        if let Some(code) = signals.pending_exit_code() {
+            return Ok(UiExit::Interrupted(code));
+        }
+        if !event::poll(Duration::from_millis(50))? {
+            continue;
+        }
 
-        if action.is_some_and(|action| app.update(action) == Outcome::Finished) {
-            return Ok(());
+        let event = match event::read() {
+            Ok(event) => event,
+            Err(error)
+                if error.kind() == io::ErrorKind::Interrupted
+                    && signals.pending_exit_code().is_some() =>
+            {
+                let code = signals.pending_exit_code().unwrap_or(SIGINT_EXIT_CODE);
+                return Ok(UiExit::Interrupted(code));
+            }
+            Err(error) => return Err(error),
+        };
+        if matches!(event, Event::Resize(_, _)) {
+            terminal.autoresize()?;
+        }
+        let Some(action) = action_for_event(event) else {
+            continue;
+        };
+        match app.update(action) {
+            Outcome::Continue => {}
+            Outcome::SelectionConfirmed(providers) => return Ok(UiExit::Selected(providers)),
+            Outcome::ApplicationConfirmed => return Ok(UiExit::Confirmed),
+            Outcome::Cancelled => return Ok(UiExit::Cancelled),
+            Outcome::Interrupted => return Ok(UiExit::Interrupted(SIGINT_EXIT_CODE)),
         }
     }
 }
 
 fn action_for_event(event: Event) -> Option<Action> {
     match event {
+        Event::Key(key)
+            if key.kind == KeyEventKind::Press
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && key.code == KeyCode::Char('c') =>
+        {
+            Some(Action::Interrupt)
+        }
         Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
             KeyCode::Up | KeyCode::Char('k') => Some(Action::Previous),
-            KeyCode::Down | KeyCode::Char('j') => Some(Action::Next),
+            KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => Some(Action::Next),
+            KeyCode::BackTab => Some(Action::Previous),
             KeyCode::Char(' ') => Some(Action::Toggle),
             KeyCode::Enter => Some(Action::Confirm),
             KeyCode::Esc | KeyCode::Char('q') => Some(Action::Cancel),
@@ -73,100 +140,169 @@ const fn run_debug_probe() -> io::Result<bool> {
     Ok(false)
 }
 
-pub fn render(frame: &mut Frame<'_>, app: &App) {
-    let [header, providers, explanation, footer] = Layout::vertical([
-        Constraint::Length(1),
+pub fn render(frame: &mut Frame<'_>, app: &App, colors: bool) {
+    match app.step() {
+        Step::Selection => render_selection(frame, app, colors),
+        Step::Review => render_review(frame, app, colors),
+    }
+}
+
+fn render_selection(frame: &mut Frame<'_>, app: &App, colors: bool) {
+    let [header, providers, explanation, message, footer] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Length(5),
         Constraint::Length(4),
-        Constraint::Length(3),
+        Constraint::Length(2),
         Constraint::Length(1),
     ])
     .areas(frame.area());
-
     frame.render_widget(
         Paragraph::new(format!(
-            "Arthur Workflow catalog: {} skills",
+            "Arthur Workflow: {} skills\nSelect providers",
             app.skill_count()
         ))
         .style(Style::default().add_modifier(Modifier::BOLD)),
         header,
     );
-
     let items = Provider::ALL.iter().enumerate().map(|(index, provider)| {
         let marker = if app.enabled(index) { "[x]" } else { "[ ]" };
-        let style = if index == app.selected() {
+        let detected = if app.detected(index) {
+            "detected"
+        } else {
+            "not detected"
+        };
+        let style = if colors && index == app.selected() {
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD)
+        } else if index == app.selected() {
+            Style::default().add_modifier(Modifier::REVERSED)
         } else {
             Style::default()
         };
-        ListItem::new(Line::from(format!("{marker} {}", provider.label()))).style(style)
+        ListItem::new(Line::from(format!(
+            "{marker} {} ({detected})",
+            provider.label()
+        )))
+        .style(style)
     });
     frame.render_widget(
         List::new(items).block(Block::default().borders(Borders::ALL).title(" Providers ")),
         providers,
     );
-
     frame.render_widget(
-        Paragraph::new(
-            "Codex reads the canonical $HOME/.agents/skills catalog whenever it exists. Provider selection controls managed agents and activations, not skill isolation.",
-        )
-        .wrap(Wrap { trim: true }),
+        Paragraph::new("Codex reads $HOME/.agents/skills whenever it exists. Provider selection controls managed agents and activations, not skill isolation.")
+            .wrap(Wrap { trim: true }),
         explanation,
     );
+    frame.render_widget(Paragraph::new(app.message().unwrap_or("")), message);
     frame.render_widget(
-        Paragraph::new("↑/↓ move  Space toggle  Enter confirm  q cancel"),
+        Paragraph::new("Tab/↑/↓ move  Space toggle  Enter continue  Esc cancel  Ctrl+C interrupt"),
         footer,
     );
 }
 
+fn render_review(frame: &mut Frame<'_>, app: &App, colors: bool) {
+    let [header, body, message, footer] = Layout::vertical([
+        Constraint::Length(2),
+        Constraint::Min(8),
+        Constraint::Length(2),
+        Constraint::Length(1),
+    ])
+    .areas(frame.area());
+    frame.render_widget(
+        Paragraph::new("Review filesystem plan\nThe complete catalog is always included.")
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        header,
+    );
+    frame.render_widget(
+        Paragraph::new(review_text(app)).wrap(Wrap { trim: false }),
+        body,
+    );
+    frame.render_widget(Paragraph::new(app.message().unwrap_or("")), message);
+    let applicable = app.review().is_some_and(|review| review.applicable);
+    let footer_style = if colors && applicable {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default()
+    };
+    let footer_text = if applicable {
+        "Enter apply  Esc cancel  Ctrl+C interrupt"
+    } else {
+        "Apply disabled: resolve conflicts or run adopt  Esc cancel"
+    };
+    frame.render_widget(Paragraph::new(footer_text).style(footer_style), footer);
+}
+
+fn review_text(app: &App) -> Text<'static> {
+    let Some(review) = app.review() else {
+        return Text::from("No plan loaded.");
+    };
+    let mut lines = Vec::new();
+    for ((root, action), entries) in &review.groups {
+        lines.push(Line::from(format!(
+            "{:?} [{}]: {}",
+            action,
+            root,
+            entries.len()
+        )));
+        for entry in entries.iter().take(2) {
+            lines.push(Line::from(format!("  {}", entry.destination.display())));
+        }
+        if entries.len() > 2 {
+            lines.push(Line::from(format!(
+                "  ... {} more; use plan --plain for every path",
+                entries.len() - 2
+            )));
+        }
+    }
+    for notice in &review.notices {
+        lines.push(Line::from(format!("Notice: {}", notice.message)));
+    }
+    Text::from(lines)
+}
+
 #[cfg(test)]
 mod tests {
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    use super::{action_for_event, render, run_debug_probe};
-    use crate::app::{Action, App};
+    use super::{action_for_event, render, review_text};
+    use crate::app::{Action, App, Provider, Review};
+    use crate::plan::{Owner, Plan, PlanAction, PlanEntry};
+    use crate::provider::resolve_roots_from;
 
     #[test]
-    fn test_backend_renders_the_selection_contract() {
-        let backend = TestBackend::new(78, 10);
-        let terminal = Terminal::new(backend);
-        assert!(terminal.is_ok());
-        let mut terminal = match terminal {
-            Ok(terminal) => terminal,
-            Err(error) => panic!("TestBackend construction failed: {error}"),
-        };
-        let draw = terminal.draw(|frame| render(frame, &App::new(50)));
-        assert!(draw.is_ok());
-
-        let buffer = terminal.backend().buffer();
-        let rendered = buffer
+    fn test_backend_renders_selection_accessibly() -> Result<(), Box<dyn std::error::Error>> {
+        let backend = TestBackend::new(82, 16);
+        let mut terminal = Terminal::new(backend)?;
+        assert!(
+            terminal
+                .draw(|frame| render(frame, &App::new(50, &[Provider::Claude]), false))
+                .is_ok()
+        );
+        let rendered = terminal
+            .backend()
+            .buffer()
             .content
-            .chunks(usize::from(buffer.area.width))
+            .chunks(usize::from(terminal.backend().buffer().area.width))
             .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
-            .collect::<Vec<_>>();
-        assert_eq!(rendered.len(), 10);
-        assert!(rendered[0].contains("Arthur Workflow catalog: 50 skills"));
-        assert!(rendered[2].contains("[x] Claude Code"));
-        assert!(rendered[3].contains("[x] Codex"));
-        assert!(rendered[5].contains("Codex reads the canonical $HOME/.agents/skills"));
-        assert!(rendered[8].contains("Enter confirm"));
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("Claude Code (detected)"));
+        assert!(rendered.contains("Codex (not detected)"));
+        assert!(rendered.contains("Ctrl+C interrupt"));
+        Ok(())
     }
 
     #[test]
-    fn keyboard_and_resize_events_map_to_shared_actions() {
+    fn keyboard_resize_and_interrupt_events_map_to_shared_actions() {
         let key = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
-        assert_eq!(action_for_event(key(KeyCode::Up)), Some(Action::Previous));
+        assert_eq!(action_for_event(key(KeyCode::Tab)), Some(Action::Next));
         assert_eq!(
-            action_for_event(key(KeyCode::Char('k'))),
+            action_for_event(key(KeyCode::BackTab)),
             Some(Action::Previous)
-        );
-        assert_eq!(action_for_event(key(KeyCode::Down)), Some(Action::Next));
-        assert_eq!(
-            action_for_event(key(KeyCode::Char('j'))),
-            Some(Action::Next)
         );
         assert_eq!(
             action_for_event(key(KeyCode::Char(' '))),
@@ -175,20 +311,83 @@ mod tests {
         assert_eq!(action_for_event(key(KeyCode::Enter)), Some(Action::Confirm));
         assert_eq!(action_for_event(key(KeyCode::Esc)), Some(Action::Cancel));
         assert_eq!(
-            action_for_event(key(KeyCode::Char('q'))),
-            Some(Action::Cancel)
-        );
-        assert_eq!(action_for_event(key(KeyCode::Char('x'))), None);
-        assert_eq!(
             action_for_event(Event::Resize(120, 40)),
             Some(Action::Resize(120, 40))
         );
+        let ctrl_c = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert_eq!(action_for_event(ctrl_c), Some(Action::Interrupt));
+        for code in [KeyCode::Up, KeyCode::Char('k')] {
+            assert_eq!(action_for_event(key(code)), Some(Action::Previous));
+        }
+        for code in [KeyCode::Down, KeyCode::Char('j')] {
+            assert_eq!(action_for_event(key(code)), Some(Action::Next));
+        }
+        assert_eq!(
+            action_for_event(key(KeyCode::Char('q'))),
+            Some(Action::Cancel)
+        );
+        assert_eq!(action_for_event(key(KeyCode::F(1))), None);
         assert_eq!(action_for_event(Event::FocusGained), None);
+        assert_eq!(
+            action_for_event(Event::Key(KeyEvent::new_with_kind(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+                KeyEventKind::Release,
+            ))),
+            None
+        );
     }
 
-    #[cfg(debug_assertions)]
     #[test]
-    fn debug_probe_defaults_to_continuing_the_event_loop() {
-        assert!(matches!(run_debug_probe(), Ok(false)));
+    fn colored_selection_and_empty_review_have_stable_fallbacks()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut app = App::new(1, &[Provider::Codex]);
+        app.update(Action::Next);
+        let backend = TestBackend::new(82, 16);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.draw(|frame| render(frame, &app, true))?;
+        assert!(review_text(&app).to_string().contains("No plan loaded"));
+        Ok(())
+    }
+
+    #[test]
+    fn compact_review_keeps_conflicts_actionable_with_a_text_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let home = tempfile::tempdir()?;
+        let roots = resolve_roots_from(Some(home.path().as_os_str()), None, &[Provider::Claude])?;
+        let entries = (0..3)
+            .map(|index| PlanEntry {
+                action: PlanAction::Conflict,
+                source: format!("skill-{index}"),
+                destination: roots
+                    .canonical_skills
+                    .join(format!("skill-{index}/SKILL.md")),
+                owner: Owner::Unmanaged,
+                reason: "foreign content".to_owned(),
+            })
+            .collect::<Vec<_>>();
+        let plan = Plan {
+            schema_version: 1,
+            applicable: false,
+            entries,
+            operations: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+        let mut app = App::with_selection(50, &[Provider::Claude]);
+        app.set_review(Review::from_plan(&plan, &[], &roots));
+        let backend = TestBackend::new(64, 16);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.draw(|frame| render(frame, &app, false))?;
+        let rendered = terminal
+            .backend()
+            .buffer()
+            .content
+            .chunks(usize::from(terminal.backend().buffer().area.width))
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(rendered.contains("plan --plain"));
+        assert!(rendered.contains("Apply disabled"));
+        Ok(())
     }
 }
