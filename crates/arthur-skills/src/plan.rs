@@ -24,6 +24,12 @@ pub enum PlanAction {
     RecoveryRequired,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RemovalPolicy {
+    BlockOnDrift,
+    RetainUnmanaged,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Owner {
@@ -256,6 +262,15 @@ pub fn build_plan(
     owned: &[OwnedAssetState],
     policy: &PathPolicy,
 ) -> Plan {
+    build_plan_with_removal_policy(desired, owned, policy, RemovalPolicy::BlockOnDrift)
+}
+
+pub fn build_plan_with_removal_policy(
+    desired: &[DesiredAsset],
+    owned: &[OwnedAssetState],
+    policy: &PathPolicy,
+    removal_policy: RemovalPolicy,
+) -> Plan {
     let mut entries = Vec::new();
     let mut operations = Vec::new();
     let mut diagnostics = Vec::new();
@@ -398,10 +413,23 @@ pub fn build_plan(
     }
 
     let desired_keys = desired_by_path.keys().cloned().collect::<BTreeSet<_>>();
-    for (key, receipt_asset) in owned_by_path {
-        if desired_keys.contains(&key) {
-            continue;
-        }
+    let mut removals = owned_by_path
+        .into_iter()
+        .filter(|(key, _)| !desired_keys.contains(key))
+        .collect::<Vec<_>>();
+    if removal_policy == RemovalPolicy::RetainUnmanaged {
+        removals.sort_by(|left, right| {
+            right
+                .1
+                .destination
+                .components()
+                .count()
+                .cmp(&left.1.destination.components().count())
+                .then(right.0.cmp(&left.0))
+        });
+    }
+    let mut removable_paths = BTreeSet::new();
+    for (key, receipt_asset) in removals {
         let synthetic = DesiredAsset {
             source_id: receipt_asset.source_id.clone(),
             destination: receipt_asset.destination.clone(),
@@ -421,6 +449,34 @@ pub fn build_plan(
         };
         match inspect_path(&receipt_asset.destination) {
             Ok(Some(snapshot)) if snapshot_matches(&snapshot, &receipt_asset.expected) => {
+                if removal_policy == RemovalPolicy::RetainUnmanaged
+                    && snapshot.kind == NodeKind::Directory
+                {
+                    match directory_children_are_removable(
+                        &receipt_asset.destination,
+                        &removable_paths,
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            entries.push(entry(
+                                PlanAction::RetainedUnmanaged,
+                                &synthetic,
+                                Owner::ArthurWorkflow,
+                                "owned directory contains unmanaged content and will be released",
+                            ));
+                            continue;
+                        }
+                        Err(error) => {
+                            diagnostics.push(Diagnostic::path_error(
+                                "filesystem_scan_failed",
+                                format!("cannot inspect owned directory: {error}"),
+                                &receipt_asset.destination,
+                            ));
+                            applicable = false;
+                            continue;
+                        }
+                    }
+                }
                 entries.push(entry(
                     PlanAction::Remove,
                     &synthetic,
@@ -428,6 +484,23 @@ pub fn build_plan(
                     "owned asset is absent from the desired state",
                 ));
                 operations.push(remove_operation(receipt_asset, snapshot, root));
+                removable_paths.insert(key);
+            }
+            Ok(None) if removal_policy == RemovalPolicy::RetainUnmanaged => {
+                entries.push(entry(
+                    PlanAction::Remove,
+                    &synthetic,
+                    Owner::ArthurWorkflow,
+                    "owned asset is already absent and its ownership will be released",
+                ));
+            }
+            Ok(_) if removal_policy == RemovalPolicy::RetainUnmanaged => {
+                entries.push(entry(
+                    PlanAction::RetainedUnmanaged,
+                    &synthetic,
+                    Owner::ArthurWorkflow,
+                    "owned asset is retained and its ownership will be released",
+                ));
             }
             Ok(_) => {
                 entries.push(entry(
@@ -492,6 +565,25 @@ pub fn build_plan(
         operations,
         diagnostics,
     }
+}
+
+fn directory_children_are_removable(
+    directory: &Path,
+    removable_paths: &BTreeSet<Vec<u8>>,
+) -> io::Result<bool> {
+    for entry in fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.to_str().is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "non-UTF-8 directory entry cannot be classified safely",
+            ));
+        }
+        if !removable_paths.contains(&path_key(&path)) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn index_owned<'a>(

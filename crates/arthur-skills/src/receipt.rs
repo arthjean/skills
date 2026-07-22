@@ -57,6 +57,14 @@ pub struct OwnedAsset {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct RetainedUnmanagedAsset {
+    pub source_id: String,
+    pub destination: PathBuf,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     pub schema_version: u16,
     pub cli_version: String,
@@ -67,6 +75,8 @@ pub struct Receipt {
     pub roots: ReceiptRoots,
     pub providers: Vec<ProviderReceipt>,
     pub assets: Vec<OwnedAsset>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retained_unmanaged: Vec<RetainedUnmanagedAsset>,
 }
 
 impl Receipt {
@@ -100,6 +110,7 @@ impl Receipt {
             },
             providers,
             assets: Vec::new(),
+            retained_unmanaged: Vec::new(),
         }
     }
 
@@ -160,6 +171,29 @@ impl Receipt {
             if !destinations.insert(asset.destination.as_path()) {
                 return Err(ReceiptError::DuplicateDestination(
                     asset.destination.clone(),
+                ));
+            }
+        }
+        let mut retained_destinations = BTreeSet::new();
+        for retained in &self.retained_unmanaged {
+            if retained.source_id.is_empty() || retained.reason.is_empty() {
+                return Err(ReceiptError::InvalidAsset {
+                    source_id: retained.source_id.clone(),
+                    detail: "retained unmanaged records require a source and reason",
+                });
+            }
+            validate_absolute_path("retained_unmanaged.destination", &retained.destination)?;
+            if !destination_is_under_recorded_root(&retained.destination, self) {
+                return Err(ReceiptError::InvalidAsset {
+                    source_id: retained.source_id.clone(),
+                    detail: "retained unmanaged destination is outside every recorded root",
+                });
+            }
+            if destinations.contains(retained.destination.as_path())
+                || !retained_destinations.insert(retained.destination.as_path())
+            {
+                return Err(ReceiptError::DuplicateDestination(
+                    retained.destination.clone(),
                 ));
             }
         }
@@ -421,16 +455,7 @@ fn validate_asset(asset: &OwnedAsset) -> Result<(), ReceiptError> {
 }
 
 fn validate_asset_root(asset: &OwnedAsset, receipt: &Receipt) -> Result<(), ReceiptError> {
-    let under_known_root = asset
-        .destination
-        .starts_with(&receipt.roots.canonical.lexical)
-        || receipt.providers.iter().any(|provider| {
-            provider
-                .root
-                .as_ref()
-                .is_some_and(|root| asset.destination.starts_with(&root.lexical))
-        });
-    if !under_known_root {
+    if !destination_is_under_recorded_root(&asset.destination, receipt) {
         return Err(ReceiptError::InvalidAsset {
             source_id: asset.source_id.clone(),
             detail: "destination is outside every recorded root",
@@ -497,6 +522,16 @@ fn validate_asset_root(asset: &OwnedAsset, receipt: &Receipt) -> Result<(), Rece
         });
     }
     Ok(())
+}
+
+fn destination_is_under_recorded_root(destination: &Path, receipt: &Receipt) -> bool {
+    destination.starts_with(&receipt.roots.canonical.lexical)
+        || receipt.providers.iter().any(|provider| {
+            provider
+                .root
+                .as_ref()
+                .is_some_and(|root| destination.starts_with(&root.lexical))
+        })
 }
 
 fn normalize_path(path: &Path) -> Option<PathBuf> {
