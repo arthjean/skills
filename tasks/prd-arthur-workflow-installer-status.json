@@ -25,10 +25,10 @@
     {
       "id": "EP-003",
       "title": "Installation et cycle de vie des providers",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 3,
-      "stories_done": 0
+      "stories_done": 3
     },
     {
       "id": "EP-004",
@@ -160,37 +160,37 @@
       "id": "US-010",
       "title": "Installer et réconcilier la source canonique",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-008"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T14:00:16Z",
+      "completed_at": "2026-07-22T14:32:59Z",
+      "reviewed_at": "2026-07-22T14:32:59Z"
     },
     {
       "id": "US-011",
       "title": "Activer les providers et installer leurs agents",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-005", "US-010"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T14:05:10Z",
+      "completed_at": "2026-07-22T14:32:59Z",
+      "reviewed_at": "2026-07-22T14:32:59Z"
     },
     {
       "id": "US-012",
       "title": "Désinstaller par provider et libérer les références",
       "epic": "EP-003",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-011"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T14:05:10Z",
+      "completed_at": "2026-07-22T14:32:59Z",
+      "reviewed_at": "2026-07-22T14:32:59Z"
     },
     {
       "id": "US-013",
