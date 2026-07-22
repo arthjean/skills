@@ -103,6 +103,13 @@ impl Catalog {
     pub const fn manifest(&self) -> &Manifest {
         &self.manifest
     }
+
+    pub fn embedded_file(&self, relative_path: &str) -> Option<EmbeddedFile> {
+        EMBEDDED_FILES
+            .iter()
+            .find(|file| file.path == relative_path)
+            .copied()
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]

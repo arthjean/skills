@@ -5,6 +5,7 @@ pub mod app;
 pub mod catalog;
 pub mod cli;
 pub mod engine;
+pub mod lifecycle;
 pub mod operations;
 pub mod plain;
 pub mod plan;
