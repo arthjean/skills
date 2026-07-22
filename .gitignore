@@ -8,3 +8,6 @@ __pycache__/
 *.swp
 *.swo
 Thumbs.db
+
+# Local agent configuration
+.codex/
