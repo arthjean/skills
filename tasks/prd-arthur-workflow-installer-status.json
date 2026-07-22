@@ -33,10 +33,10 @@
     {
       "id": "EP-004",
       "title": "UX interactive et contrat d'automatisation",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "stories_total": 3,
-      "stories_done": 0
+      "stories_done": 3
     },
     {
       "id": "EP-005",
@@ -196,37 +196,37 @@
       "id": "US-013",
       "title": "Exposer les commandes et le contrat JSON",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-006", "US-008"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T15:45:19Z",
+      "completed_at": "2026-07-22T17:25:45Z",
+      "reviewed_at": "2026-07-22T17:25:45Z"
     },
     {
       "id": "US-014",
       "title": "Guider l'installation avec Ratatui",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-013"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T15:57:55Z",
+      "completed_at": "2026-07-22T17:25:45Z",
+      "reviewed_at": "2026-07-22T17:25:45Z"
     },
     {
       "id": "US-015",
       "title": "Assurer accessibilité et interruption sûre",
       "epic": "EP-004",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-014"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T15:57:55Z",
+      "completed_at": "2026-07-22T17:25:45Z",
+      "reviewed_at": "2026-07-22T17:25:45Z"
     },
     {
       "id": "US-016",
