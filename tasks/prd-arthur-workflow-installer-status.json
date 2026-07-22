@@ -1,0 +1,292 @@
+{
+  "prd": {
+    "file": "tasks/prd-arthur-workflow-installer.md",
+    "title": "Installateur Arthur Workflow",
+    "created_at": "2026-07-22",
+    "status": "IN_PROGRESS"
+  },
+  "epics": [
+    {
+      "id": "EP-001",
+      "title": "Fondations portables du catalogue",
+      "status": "DONE",
+      "priority": "P0",
+      "stories_total": 4,
+      "stories_done": 4
+    },
+    {
+      "id": "EP-002",
+      "title": "Planification, ownership et transactions",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 5,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-003",
+      "title": "Installation et cycle de vie des providers",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 3,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-004",
+      "title": "UX interactive et contrat d'automatisation",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 3,
+      "stories_done": 0
+    },
+    {
+      "id": "EP-005",
+      "title": "Diagnostic, mise à jour et release",
+      "status": "TODO",
+      "priority": "P0",
+      "stories_total": 5,
+      "stories_done": 0
+    }
+  ],
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Valider le socle Rust et Ratatui",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": [],
+      "started_at": "2026-07-22T11:03:40Z",
+      "completed_at": "2026-07-22T11:42:39Z",
+      "reviewed_at": "2026-07-22T11:42:39Z"
+    },
+    {
+      "id": "US-002",
+      "title": "Générer le manifeste immuable du catalogue",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-001"],
+      "started_at": "2026-07-22T11:11:46Z",
+      "completed_at": "2026-07-22T11:42:39Z",
+      "reviewed_at": "2026-07-22T11:42:39Z"
+    },
+    {
+      "id": "US-003",
+      "title": "Rendre les assets indépendants de la machine source",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-002"],
+      "started_at": "2026-07-22T11:16:48Z",
+      "completed_at": "2026-07-22T11:42:39Z",
+      "reviewed_at": "2026-07-22T11:42:39Z"
+    },
+    {
+      "id": "US-004",
+      "title": "Valider les contrats provider-specific",
+      "epic": "EP-001",
+      "status": "DONE",
+      "priority": "P0",
+      "size": "S",
+      "blocked_by": ["US-002", "US-003"],
+      "started_at": "2026-07-22T11:17:41Z",
+      "completed_at": "2026-07-22T11:42:39Z",
+      "reviewed_at": "2026-07-22T11:42:39Z"
+    },
+    {
+      "id": "US-005",
+      "title": "Résoudre les racines et stratégies provider",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-004"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-006",
+      "title": "Inspecter l'état et produire un plan déterministe",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-005"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-007",
+      "title": "Construire le commit transactionnel par racine",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-006"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-008",
+      "title": "Gérer rollback, signaux et récupération après crash",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-007"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-009",
+      "title": "Adopter une installation existante entrée par entrée",
+      "epic": "EP-002",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-006", "US-007", "US-008"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-010",
+      "title": "Installer et réconcilier la source canonique",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-008"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-011",
+      "title": "Activer les providers et installer leurs agents",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-005", "US-010"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-012",
+      "title": "Désinstaller par provider et libérer les références",
+      "epic": "EP-003",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-011"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-013",
+      "title": "Exposer les commandes et le contrat JSON",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-006", "US-008"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-014",
+      "title": "Guider l'installation avec Ratatui",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-013"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-015",
+      "title": "Assurer accessibilité et interruption sûre",
+      "epic": "EP-004",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-014"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-016",
+      "title": "Diagnostiquer l'état installé",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-010", "US-011", "US-012", "US-013"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-017",
+      "title": "Réconcilier vers le catalogue embarqué",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "M",
+      "blocked_by": ["US-012", "US-016"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-018",
+      "title": "Prouver le cycle de vie filesystem de bout en bout",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-009", "US-012", "US-013", "US-016", "US-017"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-019",
+      "title": "Prouver récupération, concurrence et portabilité",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-008", "US-013", "US-015", "US-018"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    },
+    {
+      "id": "US-020",
+      "title": "Construire et publier les binaires natifs",
+      "epic": "EP-005",
+      "status": "TODO",
+      "priority": "P0",
+      "size": "L",
+      "blocked_by": ["US-001", "US-002", "US-003", "US-004", "US-015", "US-018", "US-019"],
+      "started_at": null,
+      "completed_at": null,
+      "reviewed_at": null
+    }
+  ]
+}
