@@ -31,7 +31,10 @@ bunx skills add arthjean/skills --global
 ## Repository structure
 
 - [`skills/`](skills/) contains every installable skill. Each skill has its own `SKILL.md` and optional references, scripts, or assets.
-- [`agents/`](agents/) contains standalone subagent prompts. The `skills` CLI does not install these files.
+- [`agents/claude/`](agents/claude/) mirrors the agents optimized for Claude Code.
+- [`agents/codex/`](agents/codex/) mirrors the agents optimized for Codex, including their evaluation suite.
+
+The `skills` CLI does not install these agent files.
 
 The CLI discovers skills recursively, so the repository can be installed directly through the GitHub shorthand above.
 
