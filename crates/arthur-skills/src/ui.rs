@@ -126,7 +126,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
-    use super::{action_for_event, render};
+    use super::{action_for_event, render, run_debug_probe};
     use crate::app::{Action, App};
 
     #[test]
@@ -184,5 +184,11 @@ mod tests {
             Some(Action::Resize(120, 40))
         );
         assert_eq!(action_for_event(Event::FocusGained), None);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_probe_defaults_to_continuing_the_event_loop() {
+        assert!(matches!(run_debug_probe(), Ok(false)));
     }
 }

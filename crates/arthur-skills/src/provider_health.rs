@@ -69,7 +69,7 @@ impl Version {
 
 #[cfg(test)]
 mod tests {
-    use crate::catalog::{Catalog, Provider};
+    use crate::catalog::{Catalog, Manifest, Provider, ProviderContract};
 
     use super::{ProviderHealth, ProviderIssue, assess};
 
@@ -139,5 +139,28 @@ mod tests {
             ),
             ProviderHealth::Unhealthy(ProviderIssue::InvalidVersion { .. })
         ));
+    }
+
+    #[test]
+    fn four_component_versions_are_rejected() {
+        let manifest = Manifest {
+            schema_version: 1,
+            catalog_sha256: String::new(),
+            files_total: 0,
+            assets: Vec::new(),
+            provider_contracts: vec![ProviderContract {
+                provider: Provider::Codex,
+                validated_version: "1.2.3".to_owned(),
+                models: vec!["model".to_owned()],
+            }],
+            external_capabilities: Vec::new(),
+        };
+
+        assert_eq!(
+            assess(&manifest, Provider::Codex, "1.2.3.4", "model"),
+            ProviderHealth::Unhealthy(ProviderIssue::InvalidVersion {
+                observed: "1.2.3.4".to_owned(),
+            })
+        );
     }
 }

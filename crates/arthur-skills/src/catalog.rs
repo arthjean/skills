@@ -178,3 +178,14 @@ fn hash_embedded(files: &[EmbeddedFile]) -> String {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod coverage_tests {
+    use super::CatalogError;
+
+    #[test]
+    fn catalog_error_display_preserves_the_verifier_detail() {
+        let error = CatalogError("catalog mismatch".to_owned());
+        assert_eq!(error.to_string(), "catalog mismatch");
+    }
+}
