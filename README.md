@@ -28,11 +28,26 @@ Install globally instead of in the current project:
 bunx skills add arthjean/skills --global
 ```
 
+## Native installer foundation
+
+The `arthur-skills` binary embeds the complete runtime catalog and requires no JavaScript runtime after compilation. Rust 1.95.0 is pinned at the repository root.
+
+```bash
+cargo run -p arthur-skills -- --help
+cargo run -p arthur-skills -- --plain
+cargo build --release -p arthur-skills
+./target/release/arthur-skills --help
+```
+
+Interactive terminals use Ratatui in an inline viewport. `--plain`, `TERM=dumb`, redirected stdin, or redirected stdout selects the line-oriented renderer without raw mode, cursor addressing, colors, or an alternate screen.
+
 ## Repository structure
 
 - [`skills/`](skills/) contains every installable skill. Each skill has its own `SKILL.md` and optional references, scripts, or assets.
 - [`agents/claude/`](agents/claude/) mirrors the agents optimized for Claude Code.
 - [`agents/codex/`](agents/codex/) mirrors the agents optimized for Codex, including their evaluation suite.
+- [`crates/arthur-skills/`](crates/arthur-skills/) contains the native CLI and build-time catalog validator.
+- [`shared/claude/skills/_shared/`](shared/claude/skills/_shared/) contains packaged Claude workflow support documents.
 
 The `skills` CLI does not install these agent files.
 
