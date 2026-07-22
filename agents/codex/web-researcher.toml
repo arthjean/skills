@@ -35,7 +35,7 @@ bearer_token_env_var = "GITHUB_PAT_TOKEN"
 
 [mcp_servers.paneflow]
 enabled = false
-command = "/home/arthur/.local/share/paneflow-dev/bin/paneflow-mcp"
+command = "paneflow-mcp"
 
 [permissions.web-researcher.filesystem]
 ":minimal" = "read"
