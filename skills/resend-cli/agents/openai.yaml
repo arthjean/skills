@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resend CLI"
+  short_description: "Operate Resend safely from Codex CLI"
+  default_prompt: "Use $resend-cli to inspect and manage my Resend resources safely."

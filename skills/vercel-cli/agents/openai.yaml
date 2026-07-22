@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vercel CLI"
+  short_description: "Operate Vercel safely from Codex CLI"
+  default_prompt: "Use $vercel-cli to inspect and manage my Vercel projects safely."

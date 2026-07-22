@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clerk CLI"
+  short_description: "Operate Clerk safely from Codex CLI"
+  default_prompt: "Use $clerk-cli to inspect and manage my Clerk instance safely."

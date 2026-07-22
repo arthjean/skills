@@ -1,0 +1,4 @@
+interface:
+  display_name: "Neon CLI"
+  short_description: "Operate Neon Postgres safely from Codex CLI"
+  default_prompt: "Use $neon-cli to inspect and manage my Neon Postgres project safely."

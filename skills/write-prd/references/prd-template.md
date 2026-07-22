@@ -1,4 +1,4 @@
-# PRD Template - Exact Format for /implement-epic and /review-story Compatibility
+# PRD Template - Exact Format for /implement-epic and /review-epic Compatibility
 
 ## Complete PRD Template
 
@@ -307,12 +307,15 @@ TODO → IN_PROGRESS → IN_REVIEW
   └→ CANCELLED
 ```
 
-- `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the matching story slice in Phase 4
+- `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the matching story slice in Phase 2
 - `IN_PROGRESS` → `IN_REVIEW`: when a story still needs manual verification after `/implement-epic` validation
-- `IN_PROGRESS` or `IN_REVIEW` → `DONE`: when `/implement-epic` Phase 8 verifies every story criterion and no manual verification remains
-- Any → `BLOCKED`: when a dependency is not met
+- `IN_PROGRESS` or `IN_REVIEW` → `DONE`: when `/implement-epic` or `/review-epic` proves every story criterion and no manual verification remains
+- `DONE` → `IN_REVIEW`: when `/review-epic` disproves completion or leaves required manual verification
+- Any → `BLOCKED`: when a dependency, irreversible decision, or repeated technical failure prevents further work
 - `BLOCKED` → `TODO`: when blocker is resolved
 - Any → `CANCELLED`: manual decision
+
+`/review-epic` sets `reviewed_at` on every reviewed, non-cancelled child story and then recalculates story, epic, and PRD roll-ups.
 
 ### Epic Status Roll-up
 
@@ -338,10 +341,10 @@ TODO → IN_PROGRESS → IN_REVIEW
 /implement-epic [prd] [EP-NNN]   → implements one epic through ordered story slices, updates roll-up status
      |
      v
-/review-story [prd] [US-NNN?]    → reviews implementation, updates status
+/review-epic [prd] [EP-NNN]      → reviews and corrects one implemented epic, updates status roll-ups
      |
      v
-/security-review                  → standalone security audit (used within review-story)
+/security-review                  → optional standalone security audit outside the epic workflow
 ```
 
 The status.json file is the shared state between all skills. Each skill reads it to understand progress and updates it after completing its work.

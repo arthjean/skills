@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostHog CLI"
+  short_description: "Operate PostHog safely from Codex CLI"
+  default_prompt: "Use $posthog-cli to inspect and manage my PostHog resources safely."

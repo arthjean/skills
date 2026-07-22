@@ -4,11 +4,13 @@ This repository bundles skills from several upstream projects. Those files retai
 
 | Upstream project | Included skills |
 | --- | --- |
-| [anthropics/skills](https://github.com/anthropics/skills) | `frontend-design` |
+| [better-auth/skills](https://github.com/better-auth/skills) | `better-auth-best-practices`, `better-auth-security-best-practices`, `create-auth`, `email-and-password-best-practices`, `organization-best-practices`, `two-factor-authentication-best-practices` |
 | [cursor/plugins](https://github.com/cursor/plugins) | `thermo-nuclear-code-quality-review` |
 | [ibelick/ui-skills](https://github.com/ibelick/ui-skills) | `baseline-ui`, `ui-skills-root` |
+| [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | `better-colors`, `better-typography`, `better-ui` |
 | [jakubkrehel/make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better) | `make-interfaces-feel-better` |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-me`, `grill-with-docs`, `grilling`, `handoff`, `implement`, `improve-codebase-architecture`, `prototype`, `research`, `setup-matt-pocock-skills`, `tdd`, `teach`, `to-spec`, `to-tickets`, `triage`, `wayfinder`, `writing-great-skills` |
+| [jakubkrehel/oklch-skill](https://github.com/jakubkrehel/oklch-skill) | `oklch-skill` |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-me`, `grill-with-docs`, `grilling`, `handoff`, `implement`, `improve-codebase-architecture`, `research`, `wayfinder`, `writing-great-skills` |
 | [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | `ui-ux-pro-max` |
 | [remotion-dev/skills](https://github.com/remotion-dev/skills) | `remotion-best-practices` |
 | [vercel-labs/skills](https://github.com/vercel-labs/skills) | `find-skills` |

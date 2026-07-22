@@ -165,7 +165,7 @@ Create `tasks/` if it doesn't exist.
 
 **6a. Mark as READY:** Set status to `"READY"` in the JSON file.
 
-**6b. Display summary** - print epics/stories table, quality gates, and next steps (`/implement-epic`, `/review-story`).
+**6b. Display summary** - print epics/stories table, quality gates, and next steps (`/implement-epic`, `/review-epic`).
 
 **GATE:** Files saved. Summary displayed.
 
