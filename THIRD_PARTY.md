@@ -16,3 +16,11 @@ This repository bundles skills from several upstream projects. Those files retai
 | [vercel-labs/skills](https://github.com/vercel-labs/skills) | `find-skills` |
 
 The detector scripts under `skills/impeccable/scripts/detector/` carry embedded `Apache-2.0` SPDX notices and a 2026 copyright notice for Paul Bakaus.
+
+## Rust dependencies added for the installer transaction engine
+
+| Crate | License | Purpose |
+| --- | --- | --- |
+| `fs2` | MIT OR Apache-2.0 | Non-blocking inter-process transaction locks |
+| `rustix` | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | Descriptor-relative filesystem mutations |
+| `signal-hook` | Apache-2.0 OR MIT | Async-signal-safe interruption flags |

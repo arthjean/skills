@@ -12,10 +12,13 @@ build = "build.rs"
 [dependencies]
 clap.workspace = true
 crossterm.workspace = true
+fs2.workspace = true
 ratatui.workspace = true
+rustix.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+signal-hook.workspace = true
 
 [build-dependencies]
 serde.workspace = true
