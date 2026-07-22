@@ -28,18 +28,43 @@ Install globally instead of in the current project:
 bunx skills add arthjean/skills --global
 ```
 
-## Native installer foundation
+## Native installer
 
 The `arthur-skills` binary embeds the complete runtime catalog and requires no JavaScript runtime after compilation. Rust 1.95.0 is pinned at the repository root.
 
 ```bash
-cargo run -p arthur-skills -- --help
-cargo run -p arthur-skills -- --plain
-cargo build --release -p arthur-skills
-./target/release/arthur-skills --help
+# Pin acquisition to a release, then verify the downloaded checksum file before execution.
+ARTHUR_SKILLS_VERSION=v0.1.0
+curl --proto '=https' --tlsv1.2 -LsSf \
+  "https://github.com/arthjean/skills/releases/download/${ARTHUR_SKILLS_VERSION}/arthur-skills-installer.sh" \
+  -o arthur-skills-installer.sh
+curl --proto '=https' --tlsv1.2 -LsSf \
+  "https://github.com/arthjean/skills/releases/download/${ARTHUR_SKILLS_VERSION}/arthur-skills-installer.sh.sha256" \
+  -o arthur-skills-installer.sh.sha256
+sha256sum --check arthur-skills-installer.sh.sha256
+sh arthur-skills-installer.sh
 ```
 
-Interactive terminals use Ratatui in an inline viewport. `--plain`, `TERM=dumb`, redirected stdin, or redirected stdout selects the line-oriented renderer without raw mode, cursor addressing, colors, or an alternate screen.
+Release `v0.1.0` is the documented contract target; use a published tag and its adjacent checksum rather than an unpinned main-branch installer. For local development:
+
+```bash
+cargo run -p arthur-skills -- --help
+cargo build --release -p arthur-skills
+```
+
+The command surface is `plan`, `install`, `status`, `doctor`, `update`, `uninstall`, `adopt`, and `recover`. Start by reviewing the immutable plan, then apply the same provider selection:
+
+```bash
+arthur-skills plan --provider claude --provider codex
+arthur-skills install --provider claude --provider codex
+arthur-skills doctor
+```
+
+Interactive terminals use Ratatui in an inline viewport. `--plain`, `ARTHUR_SKILLS_PLAIN=1`, or `TERM=dumb` selects the keyboard-driven line renderer. Redirected streams and `CI=true` never prompt; pass explicit `--provider` values and `--yes` for mutations. `--json` emits one schema-v1 envelope and never initializes Ratatui. `NO_COLOR` disables color without changing the interaction mode.
+
+The installer writes canonical skills under `$HOME/.agents/skills`, Claude activations and agents under `$HOME/.claude/{skills,agents}`, Codex agents under `${CODEX_HOME:-$HOME/.codex}/agents`, and its versioned receipt under `$HOME/.agents/.arthur-workflow/receipt.json`. It owns only entries recorded in that receipt. Matching foreign entries require explicit `adopt`; conflicts and drift are never overwritten or removed. `--dry-run` scans and serializes the same plan without creating directories, locks, staging, timestamps, or a receipt.
+
+The JSON v1 status set is closed: `success`, `noop`, `blocked`, `failed`, or `recovery_required`. Every diagnostic contains `code`, `severity`, `message`, mutually exclusive `path_utf8` or `path_bytes_hex`, and `remediation`. Exit codes are stable: `0` success or no-op, `2` usage or missing non-interactive decisions, `3` conflict, `4` invalid environment, `5` transaction or integrity failure, `130` SIGINT, and `143` SIGTERM.
 
 ## Repository structure
 
