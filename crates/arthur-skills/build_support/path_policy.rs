@@ -36,12 +36,24 @@ pub fn relative_utf8(repo_root: &Path, path: &Path) -> Result<String, String> {
             lossless_path(relative.as_os_str())
         ));
     }
-    relative.to_str().map(ToOwned::to_owned).ok_or_else(|| {
-        format!(
-            "non-UTF-8 path rejected: {}",
-            lossless_path(relative.as_os_str())
-        )
-    })
+    relative
+        .components()
+        .map(|component| {
+            let Component::Normal(value) = component else {
+                return Err(format!(
+                    "{}: absolute paths and traversal components are forbidden",
+                    lossless_path(relative.as_os_str())
+                ));
+            };
+            value.to_str().ok_or_else(|| {
+                format!(
+                    "non-UTF-8 path rejected: {}",
+                    lossless_path(relative.as_os_str())
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|components| components.join("/"))
 }
 
 pub fn file_name_utf8(path: &Path) -> Result<String, String> {
