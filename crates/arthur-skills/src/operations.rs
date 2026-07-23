@@ -6,6 +6,7 @@ use crate::plan::{
     MutationKind, NodeKind, OwnershipProof as PlanOwnership, Plan, PlanAction, PlannedInverse,
     PlannedMutation, Precondition as PlanPrecondition,
 };
+use crate::platform::effective_file_mode;
 use crate::provider::{ResolvedRoots, RootIdentity};
 use crate::receipt::{OwnedAsset, OwnedAssetKind, Receipt, ReceiptState};
 use crate::transaction::{
@@ -121,18 +122,19 @@ pub fn operations_for_adoption(
             adoption.archive_path.clone(),
         ));
     }
+    let private_mode = effective_file_mode(0o600);
     let archive = Operation::new(
         "00000000-adoption-archive",
         OperationKind::WriteFile,
         archive_root,
         adoption.archive_path.clone(),
         PathSnapshot::absent(),
-        PathSnapshot::file(&adoption.original_bytes, 0o600),
+        PathSnapshot::file(&adoption.original_bytes, private_mode),
         Inverse::RemoveCreated,
         OwnershipProof::UnownedDestination,
         OperationPayload::File {
             bytes: adoption.original_bytes.clone(),
-            mode: 0o600,
+            mode: private_mode,
         },
     )?;
 
@@ -383,6 +385,7 @@ fn receipt_operation(
     receipt: &Receipt,
     transaction_id: &str,
 ) -> Result<Operation, OperationBuildError> {
+    let private_mode = effective_file_mode(0o600);
     let mut receipt = receipt.clone();
     receipt.transaction_id = Some(transaction_id.to_owned());
     receipt.state = ReceiptState::Committed;
@@ -415,10 +418,13 @@ fn receipt_operation(
         root_for_exact_path(roots, &roots.canonical.lexical)?,
         roots.receipt_path.clone(),
         precondition,
-        PathSnapshot::file(&bytes, 0o600),
+        PathSnapshot::file(&bytes, private_mode),
         inverse,
         ownership,
-        OperationPayload::File { bytes, mode: 0o600 },
+        OperationPayload::File {
+            bytes,
+            mode: private_mode,
+        },
     )
     .map_err(Into::into)
 }
