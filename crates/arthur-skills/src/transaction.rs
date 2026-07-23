@@ -937,12 +937,18 @@ impl TransactionEngine {
     ) -> Result<TransactionOutcome, TransactionError> {
         ensure_private_directory(&self.state_directory)?;
         let _lock = TransactionLock::acquire(&self.lock_path())?;
-        let discarded_temporary = self.discard_journal_temporary()?;
-        if !path_exists(&self.journal_path())? && discarded_temporary {
-            return Ok(TransactionOutcome::RecoveredRollback);
+        if !path_exists(&self.journal_path())? {
+            let discarded_temporary = self.discard_journal_temporary()?;
+            if discarded_temporary {
+                return Ok(TransactionOutcome::RecoveredRollback);
+            }
         }
         let mut journal = self.read_journal()?;
         validate_recovery_roots(&journal, trusted_roots)?;
+        self.discard_journal_temporary()?;
+        if !path_exists(&self.journal_path())? {
+            return Ok(TransactionOutcome::RecoveredRollback);
+        }
         let mut injector = NoFailures;
         let mut mutation_ordinal = 0;
         if journal.state == JournalState::Preparing {
