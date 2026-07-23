@@ -53,6 +53,17 @@ jobs:
           rustup toolchain install 1.95.0 --profile minimal --no-self-update
           rustup default 1.95.0
       - name: Run installer lifecycle contracts
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p arthur-skills \
+            --test ep005_contract \
+            --test lifecycle_contract \
+            --test process_contract \
+            --test terminal_lifecycle
+      - name: Run the full Windows installer suite
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           set -euo pipefail
