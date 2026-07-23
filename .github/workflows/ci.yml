@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95.0 with lint and coverage components
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --component clippy,rustfmt,llvm-tools-preview --no-self-update
+          rustup default 1.95.0
+      - uses: taiki-e/install-action@c44f6b046f1c29ae5918b1e0bfdbb2f1813836fd # v2
+        with:
+          tool: cargo-llvm-cov@0.8.4,cargo-deny@0.19.8
+      - name: Run quality gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets --all-features
+          cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
+          cargo test --workspace --all-targets --all-features
+          cargo llvm-cov --workspace --all-features --fail-under-regions 90
+          cargo deny check
+
+  lifecycle:
+    strategy:
+      fail-fast: true
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup default 1.95.0
+      - name: Run installer lifecycle contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p arthur-skills --test ep005_contract --test lifecycle_contract --test terminal_lifecycle
