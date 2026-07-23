@@ -291,11 +291,11 @@ jobs:
           }
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath $smokeRoot
 
-          $packageRoots = @(Get-ChildItem -LiteralPath $smokeRoot -Directory)
-          if ($packageRoots.Count -ne 1) {
-            throw "Archive must contain one package directory"
+          $packageRoot = $smokeRoot
+          $rootEntries = @(Get-ChildItem -LiteralPath $smokeRoot)
+          if ($rootEntries.Count -eq 1 -and $rootEntries[0].PSIsContainer) {
+            $packageRoot = $rootEntries[0].FullName
           }
-          $packageRoot = $packageRoots[0].FullName
           $entries = @(Get-ChildItem -LiteralPath $packageRoot)
           if ($entries.Count -ne 4 -or @($entries | Where-Object { $_.PSIsContainer }).Count -ne 0) {
             throw "Archive package must contain exactly four regular files"
