@@ -1,0 +1,406 @@
+name: Release
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact release tag to publish after every gate passes (for example, v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  DIST_VERSION: "0.32.0"
+  DIST_INSTALLER_SHA256: "b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5"
+  MACOSX_DEPLOYMENT_TARGET: "13.0"
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      building: ${{ steps.mode.outputs.building }}
+      publishing: ${{ steps.mode.outputs.publishing }}
+      release_tag: ${{ steps.mode.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(mktemp)"
+          trap 'rm -f "$installer"' EXIT
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" \
+            -o "$installer"
+          test "$(shasum -a 256 "$installer" | awk '{print $1}')" = "$DIST_INSTALLER_SHA256"
+          sh "$installer"
+      - id: mode
+        name: Resolve and validate release intent
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          SOURCE_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "building=false" >> "$GITHUB_OUTPUT"
+            echo "publishing=false" >> "$GITHUB_OUTPUT"
+            echo "release_tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            echo "::error title=Unsupported release event::releases require an explicit workflow dispatch"
+            exit 1
+          fi
+          if [[ "$SOURCE_REF" != "refs/heads/${DEFAULT_BRANCH}" ]]; then
+            echo "::error title=Unsafe release ref::dispatch releases from ${DEFAULT_BRANCH}, got ${SOURCE_REF}"
+            exit 1
+          fi
+          release_tag="$REQUESTED_TAG"
+          publishing=true
+          if [[ ! "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error title=Invalid release tag::expected v<semver>, got ${release_tag}"
+            exit 1
+          fi
+          package_version="$(awk '
+            $0 == "[workspace.package]" { in_workspace_package = 1; next }
+            /^\[/ { in_workspace_package = 0 }
+            in_workspace_package && $1 == "version" {
+              value = $3; gsub(/\"/, "", value); print value; exit
+            }
+          ' Cargo.toml)"
+          test -n "$package_version"
+          if [[ "$release_tag" != "v${package_version}" ]]; then
+            echo "::error title=Release tag mismatch::expected v${package_version}, got ${release_tag}"
+            exit 1
+          fi
+          echo "building=true" >> "$GITHUB_OUTPUT"
+          echo "publishing=$publishing" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+      - name: Validate cargo-dist release graph
+        env:
+          RELEASE_TAG: ${{ steps.mode.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            dist plan --output-format=json > dist-manifest.json
+          else
+            dist plan --tag="$RELEASE_TAG" --output-format=json > dist-manifest.json
+          fi
+          jq -e '.releases | length == 1' dist-manifest.json >/dev/null
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-plan
+          path: dist-manifest.json
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.building == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+      RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=.
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.95.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup default 1.95.0
+          rustup target add "${{ matrix.target }}"
+      - name: Install native musl tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+      - name: Install pinned dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(mktemp)"
+          trap 'rm -f "$installer"' EXIT
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" \
+            -o "$installer"
+          test "$(shasum -a 256 "$installer" | awk '{print $1}')" = "$DIST_INSTALLER_SHA256"
+          sh "$installer"
+      - name: Build one native archive
+        id: local
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist build --tag="$RELEASE_TAG" --output-format=json \
+            --artifacts=local --target="${{ matrix.target }}" > dist-manifest.json
+          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
+          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          cp dist-manifest.json "target/distrib/${{ matrix.target }}-dist-manifest.json"
+      - name: Smoke the archive without language runtimes
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(target/distrib/*-"$TARGET".tar.xz)
+          if [[ "${#archives[@]}" -ne 1 ]]; then
+            echo "::error title=Native archive mismatch::expected one archive for ${TARGET}, found ${#archives[@]}"
+            exit 1
+          fi
+          archive="${archives[0]}"
+          archive_bytes="$(wc -c < "$archive" | tr -d '[:space:]')"
+          test "$archive_bytes" -le 26214400
+          listing="$(tar -tf "$archive")"
+          if grep -Eq '(^/|(^|/)\.\.(/|$)|agents/codex/evals|(^|/)target/)' <<<"$listing"; then
+            echo "::error title=Unsafe archive entry::${TARGET} contains a forbidden path"
+            exit 1
+          fi
+          smoke_root="$(mktemp -d)"
+          smoke_home="$(mktemp -d)"
+          smoke_work="$(mktemp -d)"
+          empty_path="$(mktemp -d)"
+          cleanup_smoke() {
+            rm -rf -- "$smoke_root" "$smoke_home" "$smoke_work" "$empty_path"
+          }
+          trap cleanup_smoke EXIT
+          tar -xf "$archive" -C "$smoke_root"
+          package_root="$(find "$smoke_root" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$package_root"
+          test "$(find "$smoke_root" -mindepth 1 -maxdepth 1 | wc -l | tr -d '[:space:]')" -eq 1
+          test "$(find "$package_root" -mindepth 1 -maxdepth 1 | wc -l | tr -d '[:space:]')" -eq 4
+          test "$(find "$package_root" -mindepth 1 -maxdepth 1 ! -type f | wc -l | tr -d '[:space:]')" -eq 0
+          for required in arthur-skills LICENSE README.md THIRD_PARTY.md; do
+            test -f "$package_root/$required"
+          done
+          binary="$package_root/arthur-skills"
+          test -x "$binary"
+          for metadata in LICENSE README.md THIRD_PARTY.md; do
+            test ! -x "$package_root/$metadata"
+          done
+          if LC_ALL=C grep -aERq 'agents/codex/evals|/home/arthur|/Users/arthur|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' "$package_root"; then
+            echo "::error title=Forbidden release content::${TARGET} contains development paths or secret material"
+            exit 1
+          fi
+          if LC_ALL=C grep -aFRq "$GITHUB_WORKSPACE" "$package_root"; then
+            echo "::error title=Build path leak::${TARGET} contains the runner checkout path"
+            exit 1
+          fi
+          case "$TARGET" in
+            *-apple-darwin)
+              vtool -show-build "$binary" | awk '$1 == "minos" { print $2 }' | grep -Fx '13.0' >/dev/null
+              non_system_libraries="$(otool -L "$binary" | tail -n +2 | awk '{ print $1 }' | grep -Ev '^(/usr/lib/|/System/Library/)' || true)"
+              test -z "$non_system_libraries"
+              ;;
+            *-unknown-linux-musl)
+              if file "$binary" | grep -Fq 'dynamically linked'; then
+                echo "::error title=Dynamic musl binary::${TARGET} is not self-contained"
+                exit 1
+              fi
+              ;;
+          esac
+          (
+            cd "$smoke_work"
+            env -i HOME="$smoke_home" PATH="$empty_path" TERM=dumb "$binary" --help >/dev/null
+          )
+          plan_json="$(
+            cd "$smoke_work"
+            env -i HOME="$smoke_home" PATH="$empty_path" TERM=dumb \
+              "$binary" plan --json --provider codex
+          )"
+          jq -e '.schema_version == 1 and .command == "plan" and .exit_code == 0 and (.catalog_version | length > 0)' \
+            <<<"$plan_json" >/dev/null
+          status_json="$(
+            cd "$smoke_work"
+            env -i HOME="$smoke_home" PATH="$empty_path" TERM=dumb "$binary" status --json
+          )"
+          jq -e '.exit_code == 0 and (.data.catalog_sha256 | test("^[0-9a-f]{64}$"))' \
+            <<<"$status_json" >/dev/null
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            ${{ steps.local.outputs.paths }}
+            target/distrib/${{ matrix.target }}-dist-manifest.json
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, build]
+    if: needs.plan.outputs.building == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: release-*-*-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Install pinned dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$(mktemp)"
+          trap 'rm -f "$installer"' EXIT
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" \
+            -o "$installer"
+          test "$(shasum -a 256 "$installer" | awk '{print $1}')" = "$DIST_INSTALLER_SHA256"
+          sh "$installer"
+      - name: Build global installer, checksums, and external manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist build --tag="$RELEASE_TAG" --output-format=json \
+            --artifacts=global > dist-manifest.json
+          jq -e '.releases | length == 1' dist-manifest.json >/dev/null
+          cp dist-manifest.json target/distrib/dist-manifest.json
+          rm -f target/distrib/*-dist-manifest.json
+          test "$(find target/distrib -maxdepth 1 -type f -name '*unknown-linux-musl.tar.xz' | wc -l)" -eq 2
+          test "$(find target/distrib -maxdepth 1 -type f -name '*apple-darwin.tar.xz' | wc -l)" -eq 2
+          test "$(find target/distrib -maxdepth 1 -type f -name '*installer.sh' | wc -l)" -eq 1
+          test -s target/distrib/sha256.sum
+          for target in \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl \
+            x86_64-apple-darwin \
+            aarch64-apple-darwin; do
+            archive="$(find target/distrib -maxdepth 1 -type f -name "*-${target}.tar.xz" -print -quit)"
+            test -n "$archive"
+            grep -F "$(basename "$archive")" target/distrib/sha256.sum >/dev/null
+          done
+          installer="$(find target/distrib -maxdepth 1 -type f -name '*installer.sh' -print -quit)"
+          grep -F "$(basename "$installer")" target/distrib/sha256.sum >/dev/null
+          (cd target/distrib && sha256sum --check --strict sha256.sum)
+      - name: Attest every release artifact
+        id: attest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4
+        with:
+          subject-path: target/distrib/*
+      - name: Require the attestation created by this gate
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$ATTESTATION_ID"
+          test -s "$ATTESTATION_BUNDLE"
+      - name: Verify provenance before publication
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error title=Missing GitHub token::provenance verification requires github.token"
+            exit 1
+          fi
+          for artifact in target/distrib/*; do
+            test -f "$artifact"
+            gh attestation verify "$artifact" \
+              --repo "$GITHUB_REPOSITORY" \
+              --bundle "$ATTESTATION_BUNDLE" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+              --source-ref "$GITHUB_REF"
+          done
+      - name: Create the tag and publish atomically through a draft release
+        if: needs.plan.outputs.publishing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::error title=Missing GitHub token::draft publication requires github.token"
+            exit 1
+          fi
+          tag_created=false
+          release_created=false
+          cleanup_publication() {
+            exit_code=$?
+            trap - EXIT INT TERM
+            release_public=false
+            tag_cleanup_safe=true
+            if [[ "$tag_created" == "true" || "$release_created" == "true" ]]; then
+              is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || true)"
+              if [[ "$is_draft" == "true" ]]; then
+                gh release delete "$RELEASE_TAG" --yes || {
+                  echo "::error title=Draft cleanup failed::delete ${RELEASE_TAG} manually"
+                  tag_cleanup_safe=false
+                }
+              elif [[ "$is_draft" == "false" ]]; then
+                release_public=true
+              elif [[ "$release_created" == "true" ]]; then
+                echo "::error title=Draft cleanup status unknown::inspect ${RELEASE_TAG} manually"
+                tag_cleanup_safe=false
+              fi
+            fi
+            if [[ "$tag_created" == "true" && "$release_public" == "false" && "$tag_cleanup_safe" == "true" ]]; then
+              tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq .object.sha 2>/dev/null || true)"
+              if [[ "$tag_sha" == "$GITHUB_SHA" ]]; then
+                gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${RELEASE_TAG}" || \
+                  echo "::error title=Tag cleanup failed::delete ${RELEASE_TAG} manually"
+              else
+                echo "::error title=Tag cleanup refused::${RELEASE_TAG} no longer targets ${GITHUB_SHA}"
+              fi
+            fi
+            exit "$exit_code"
+          }
+          trap cleanup_publication EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error title=Release already exists::refusing to replace ${RELEASE_TAG}"
+            exit 1
+          fi
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error title=Tag already exists::refusing to replace ${RELEASE_TAG}"
+            exit 1
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${RELEASE_TAG}" \
+            -f sha="$GITHUB_SHA" >/dev/null
+          tag_created=true
+          gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes
+          release_created=true
+          gh release upload "$RELEASE_TAG" target/distrib/*
+          gh release edit "$RELEASE_TAG" --draft=false
+          release_created=false
+          tag_created=false
+          trap - EXIT INT TERM

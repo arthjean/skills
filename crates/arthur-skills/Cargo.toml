@@ -34,3 +34,6 @@ toml.workspace = true
 
 [lints]
 workspace = true
+
+[package.metadata.dist]
+dist = true
