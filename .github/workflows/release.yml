@@ -19,6 +19,7 @@ concurrency:
 env:
   DIST_VERSION: "0.32.0"
   DIST_INSTALLER_SHA256: "b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5"
+  DIST_WINDOWS_INSTALLER_SHA256: "a3435e9944f1a1297add11c6a8ac1f543c14a5ea88879ee05b24ff8218d46d87"
   MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 jobs:
@@ -144,6 +145,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes musl-tools
       - name: Install pinned dist
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -154,6 +156,24 @@ jobs:
             -o "$installer"
           test "$(shasum -a 256 "$installer" | awk '{print $1}')" = "$DIST_INSTALLER_SHA256"
           sh "$installer"
+      - name: Install pinned dist on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installer = Join-Path $env:RUNNER_TEMP "cargo-dist-installer.ps1"
+          try {
+            Invoke-WebRequest `
+              -Uri "https://github.com/axodotdev/cargo-dist/releases/download/v$env:DIST_VERSION/cargo-dist-installer.ps1" `
+              -OutFile $installer
+            $actualChecksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer).Hash.ToLowerInvariant()
+            if ($actualChecksum -ne $env:DIST_WINDOWS_INSTALLER_SHA256) {
+              throw "cargo-dist installer checksum mismatch: expected $env:DIST_WINDOWS_INSTALLER_SHA256, got $actualChecksum"
+            }
+            & $installer
+          } finally {
+            Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+          }
       - name: Build one native archive
         id: local
         shell: bash
