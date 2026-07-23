@@ -255,6 +255,8 @@ fn run_probe(probe: &str) -> Result<ProbeResult, Box<dyn Error>> {
     command
         .env("TERM", "xterm-256color")
         .env("ARTHUR_SKILLS_TUI_PROBE", probe)
+        .env_remove("CI")
+        .env_remove("ARTHUR_SKILLS_PLAIN")
         .stdin(Stdio::from(slave.try_clone()?))
         .stdout(Stdio::from(slave.try_clone()?))
         .stderr(Stdio::from(slave.try_clone()?));
@@ -323,7 +325,9 @@ fn run_ctrl_c(home: &std::path::Path) -> Result<InterruptResult, Box<dyn Error>>
         .arg("install")
         .env("HOME", home)
         .env("TERM", "xterm-256color")
+        .env_remove("CI")
         .env_remove("CODEX_HOME")
+        .env_remove("ARTHUR_SKILLS_PLAIN")
         .stdin(Stdio::from(slave.try_clone()?))
         .stdout(Stdio::from(slave.try_clone()?))
         .stderr(Stdio::from(slave.try_clone()?))
