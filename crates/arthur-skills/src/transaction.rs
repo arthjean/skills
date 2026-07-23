@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use fs2::FileExt;
-use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags};
+use rustix::fs::{AtFlags, Mode, OFlags, RawMode, RenameFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
@@ -2184,7 +2184,13 @@ fn set_destination_mode(operation: &Operation, mode: u32) -> Result<(), Transact
             operation.destination.clone(),
         ));
     }
-    rustix::fs::fchmod(&node, Mode::from_raw_mode(mode)).map_err(|error| {
+    let raw_mode = RawMode::try_from(mode).map_err(|_| {
+        TransactionError::InvalidOperation(
+            operation.id.clone(),
+            "POSIX mode exceeds the platform representation",
+        )
+    })?;
+    rustix::fs::fchmod(&node, Mode::from_raw_mode(raw_mode)).map_err(|error| {
         TransactionError::io("set destination mode", &operation.destination, error.into())
     })?;
     rustix::fs::fsync(&node).map_err(|error| {
