@@ -2,9 +2,11 @@ use std::env;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+use crate::platform::{metadata_device, normalize_absolute as normalize_platform_path};
 
 pub const ENVIRONMENT_EXIT_CODE: u8 = 4;
 
@@ -236,9 +238,11 @@ impl ResolveError {
 impl fmt::Display for ResolveError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedPlatform => formatter.write_str("only Linux and macOS are supported"),
+            Self::UnsupportedPlatform => {
+                formatter.write_str("only Windows, Linux and macOS are supported")
+            }
             Self::MissingHome => formatter.write_str(
-                "cannot resolve a safe user home: set HOME to an accessible absolute directory",
+                "cannot resolve a safe user home: set HOME or USERPROFILE to an accessible absolute directory",
             ),
             Self::EmptyPath { variable } => write!(formatter, "{variable} cannot be empty"),
             Self::NonUtf8Path { variable, path } => write!(
@@ -275,7 +279,7 @@ impl fmt::Display for ResolveError {
 impl std::error::Error for ResolveError {}
 
 pub fn resolve_roots(selected: &[ProviderId]) -> Result<ResolvedRoots, ResolveError> {
-    let home = env::var_os("HOME");
+    let home = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"));
     let codex_home = env::var_os("CODEX_HOME");
     resolve_roots_from(home.as_deref(), codex_home.as_deref(), selected)
 }
@@ -285,7 +289,7 @@ pub fn resolve_roots_from(
     codex_home: Option<&OsStr>,
     selected: &[ProviderId],
 ) -> Result<ResolvedRoots, ResolveError> {
-    if !cfg!(unix) {
+    if !cfg!(any(unix, windows)) {
         return Err(ResolveError::UnsupportedPlatform);
     }
 
@@ -363,24 +367,10 @@ fn validated_path(variable: &'static str, value: &OsStr) -> Result<PathBuf, Reso
 }
 
 fn normalize_absolute(variable: &'static str, path: &Path) -> Result<PathBuf, ResolveError> {
-    let mut normalized = PathBuf::from("/");
-    for component in path.components() {
-        match component {
-            Component::RootDir => {}
-            Component::CurDir => {}
-            Component::Normal(component) => normalized.push(component),
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(ResolveError::EscapesFilesystemRoot {
-                        variable,
-                        path: PathDiagnostic::new(path.as_os_str()),
-                    });
-                }
-            }
-            Component::Prefix(_) => return Err(ResolveError::UnsupportedPlatform),
-        }
-    }
-    Ok(normalized)
+    normalize_platform_path(path).ok_or_else(|| ResolveError::EscapesFilesystemRoot {
+        variable,
+        path: PathDiagnostic::new(path.as_os_str()),
+    })
 }
 
 fn resolve_identity(
@@ -450,17 +440,6 @@ fn resolve_identity(
 }
 
 #[cfg(unix)]
-fn metadata_device(metadata: &fs::Metadata) -> u64 {
-    use std::os::unix::fs::MetadataExt;
-    metadata.dev()
-}
-
-#[cfg(not(unix))]
-const fn metadata_device(_metadata: &fs::Metadata) -> u64 {
-    0
-}
-
-#[cfg(unix)]
 fn os_str_hex(value: &OsStr) -> String {
     use std::fmt::Write;
     use std::os::unix::ffi::OsStrExt;
@@ -477,8 +456,7 @@ fn os_str_hex(value: &OsStr) -> String {
 #[cfg(not(unix))]
 fn os_str_hex(value: &OsStr) -> String {
     value
-        .to_string_lossy()
-        .as_bytes()
+        .as_encoded_bytes()
         .iter()
         .fold(String::new(), |mut hex, byte| {
             use std::fmt::Write;
@@ -513,6 +491,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     fn must_fail<T, E>(result: Result<T, E>, context: &str) -> E {
         match result {
             Err(error) => error,
@@ -706,11 +685,11 @@ mod tests {
         let errors = [
             (
                 ResolveError::UnsupportedPlatform,
-                "only Linux and macOS are supported",
+                "only Windows, Linux and macOS are supported",
             ),
             (
                 ResolveError::MissingHome,
-                "cannot resolve a safe user home: set HOME to an accessible absolute directory",
+                "cannot resolve a safe user home: set HOME or USERPROFILE to an accessible absolute directory",
             ),
             (
                 ResolveError::EmptyPath {

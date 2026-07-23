@@ -1,18 +1,25 @@
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, Read};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rustix::fs::{Mode, OFlags};
 use serde::Serialize;
+
+#[cfg(unix)]
+use rustix::fs::{Mode, OFlags};
 
 use super::{HealthIssue, IssueSeverity, issue};
 use crate::catalog::{Catalog, Provider as CatalogProvider};
+#[cfg(unix)]
+use crate::platform::metadata_mode;
+use crate::platform::{
+    metadata_device, metadata_inode, metadata_mtime_nanoseconds, metadata_mtime_seconds,
+    open_directory, same_node,
+};
 use crate::provider::{ProviderId, RootIdentity};
 use crate::provider_health::{ProviderHealth, ProviderIssue, assess};
 use crate::receipt::{OwnedAssetKind, Receipt};
@@ -247,6 +254,7 @@ fn open_regular_beneath(path: &Path, root: &RootIdentity) -> io::Result<File> {
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "agent path has no parent"))?;
+    #[cfg(unix)]
     let leaf = path
         .file_name()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "agent path has no filename"))?;
@@ -263,7 +271,7 @@ fn open_regular_beneath(path: &Path, root: &RootIdentity) -> io::Result<File> {
     if !before.file_type().is_dir() || before.file_type().is_symlink() {
         return Err(io::Error::other("agent parent is not a regular directory"));
     }
-    let directory = File::open(parent)?;
+    let directory = open_directory(parent)?;
     let opened = directory.metadata()?;
     let after = fs::symlink_metadata(parent)?;
     if !opened.is_dir()
@@ -278,14 +286,18 @@ fn open_regular_beneath(path: &Path, root: &RootIdentity) -> io::Result<File> {
         ));
     }
 
-    let descriptor = rustix::fs::openat(
-        &directory,
-        leaf,
-        OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
-        Mode::empty(),
-    )
-    .map_err(io::Error::from)?;
-    let file = File::from(descriptor);
+    #[cfg(unix)]
+    let file = File::from(
+        rustix::fs::openat(
+            &directory,
+            leaf,
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+            Mode::empty(),
+        )
+        .map_err(io::Error::from)?,
+    );
+    #[cfg(windows)]
+    let file = File::open(path)?;
     let metadata = file.metadata()?;
     let path_metadata = fs::symlink_metadata(path)?;
     if !metadata.is_file()
@@ -295,10 +307,6 @@ fn open_regular_beneath(path: &Path, root: &RootIdentity) -> io::Result<File> {
         return Err(io::Error::other("agent is not a stable regular file"));
     }
     Ok(file)
-}
-
-fn same_node(left: &fs::Metadata, right: &fs::Metadata) -> bool {
-    left.dev() == right.dev() && left.ino() == right.ino()
 }
 
 fn clean_model_value(value: &str) -> String {
@@ -337,21 +345,65 @@ fn resolve_executable_from(command: &str, path: Option<&OsStr>) -> Result<Option
         if !directory.is_absolute() {
             return Err("PATH contains a relative or empty component".to_owned());
         }
-        let candidate = directory.join(command);
-        let metadata = match fs::metadata(&candidate) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(format!("cannot inspect {}: {error}", candidate.display())),
-        };
-        if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
-            continue;
+        for candidate in executable_candidates(&directory, command) {
+            let metadata = match fs::metadata(&candidate) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    return Err(format!("cannot inspect {}: {error}", candidate.display()));
+                }
+            };
+            if !metadata.is_file() || !is_executable(&metadata) {
+                continue;
+            }
+            let canonical = fs::canonicalize(&candidate)
+                .map_err(|error| format!("cannot resolve {}: {error}", candidate.display()))?;
+            trusted_executable_identity(&canonical)?;
+            return Ok(Some(canonical));
         }
-        let canonical = fs::canonicalize(&candidate)
-            .map_err(|error| format!("cannot resolve {}: {error}", candidate.display()))?;
-        trusted_executable_identity(&canonical)?;
-        return Ok(Some(canonical));
     }
     Ok(None)
+}
+
+#[cfg(unix)]
+fn executable_candidates(directory: &Path, command: &str) -> Vec<PathBuf> {
+    vec![directory.join(command)]
+}
+
+#[cfg(windows)]
+fn executable_candidates(directory: &Path, command: &str) -> Vec<PathBuf> {
+    let extensions = std::env::var_os("PATHEXT")
+        .map(|value| {
+            value
+                .to_string_lossy()
+                .split(';')
+                .filter(|extension| !extension.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_else(|| {
+            [".COM", ".EXE", ".BAT", ".CMD"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect()
+        });
+    let mut candidates = vec![directory.join(command)];
+    candidates.extend(
+        extensions
+            .into_iter()
+            .map(|extension| directory.join(format!("{command}{extension}"))),
+    );
+    candidates
+}
+
+#[cfg(unix)]
+fn is_executable(metadata: &fs::Metadata) -> bool {
+    metadata_mode(metadata) & 0o111 != 0
+}
+
+#[cfg(windows)]
+fn is_executable(metadata: &fs::Metadata) -> bool {
+    metadata.is_file()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -363,13 +415,16 @@ struct ExecutableIdentity {
     modified_nanoseconds: i64,
 }
 
+#[cfg(unix)]
 fn trusted_executable_identity(path: &Path) -> Result<ExecutableIdentity, String> {
+    use std::os::unix::fs::MetadataExt;
+
     let effective_uid = rustix::process::geteuid().as_raw();
     let mut current = Some(path);
     while let Some(candidate) = current {
         let metadata = fs::metadata(candidate)
             .map_err(|error| format!("cannot inspect {}: {error}", candidate.display()))?;
-        let mode = metadata.permissions().mode();
+        let mode = metadata_mode(&metadata);
         let trusted_owner = metadata.uid() == 0 || metadata.uid() == effective_uid;
         let sticky_root_directory = metadata.is_dir() && metadata.uid() == 0 && mode & 0o1000 != 0;
         if !trusted_owner || (mode & 0o022 != 0 && !sticky_root_directory) {
@@ -382,18 +437,37 @@ fn trusted_executable_identity(path: &Path) -> Result<ExecutableIdentity, String
     }
     let metadata = fs::metadata(path)
         .map_err(|error| format!("cannot inspect {}: {error}", path.display()))?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
+    if !metadata.is_file() || !is_executable(&metadata) {
         return Err(format!(
             "provider executable is not runnable: {}",
             path.display()
         ));
     }
     Ok(ExecutableIdentity {
-        device: metadata.dev(),
-        inode: metadata.ino(),
+        device: metadata_device(&metadata),
+        inode: metadata_inode(&metadata),
         size: metadata.len(),
-        modified_seconds: metadata.mtime(),
-        modified_nanoseconds: metadata.mtime_nsec(),
+        modified_seconds: metadata_mtime_seconds(&metadata),
+        modified_nanoseconds: metadata_mtime_nanoseconds(&metadata),
+    })
+}
+
+#[cfg(windows)]
+fn trusted_executable_identity(path: &Path) -> Result<ExecutableIdentity, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("cannot inspect {}: {error}", path.display()))?;
+    if !metadata.is_file() {
+        return Err(format!(
+            "provider executable is not a regular file: {}",
+            path.display()
+        ));
+    }
+    Ok(ExecutableIdentity {
+        device: metadata_device(&metadata),
+        inode: metadata_inode(&metadata),
+        size: metadata.len(),
+        modified_seconds: metadata_mtime_seconds(&metadata),
+        modified_nanoseconds: metadata_mtime_nanoseconds(&metadata),
     })
 }
 
@@ -558,7 +632,7 @@ fn extract_version(text: &str) -> Option<String> {
         .map(str::to_owned)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::ffi::OsStr;
     use std::fs;

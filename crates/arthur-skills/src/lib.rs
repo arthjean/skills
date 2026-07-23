@@ -13,6 +13,7 @@ pub mod operations;
 pub mod output;
 pub mod plain;
 pub mod plan;
+mod platform;
 pub mod provider;
 pub mod provider_health;
 pub mod receipt;

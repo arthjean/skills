@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::plan::{DiagnosticSeverity as PlanSeverity, Owner, Plan, PlanAction, PlanEntry};
+use crate::platform::path_key;
 use crate::provider::{ENVIRONMENT_EXIT_CODE, ProviderId};
 
 pub const OUTPUT_SCHEMA_VERSION: u16 = 1;
@@ -256,7 +256,7 @@ fn summarize(plan: &Plan) -> BTreeMap<String, usize> {
 pub fn path_fields(path: &Path) -> (Option<String>, Option<String>) {
     match path.to_str() {
         Some(path) => (Some(path.to_owned()), None),
-        None => (None, Some(hex(path.as_os_str().as_bytes()))),
+        None => (None, Some(hex(&path_key(path.as_os_str())))),
     }
 }
 
@@ -270,7 +270,7 @@ fn hex(bytes: &[u8]) -> String {
     encoded
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::ffi::OsString;
     use std::io::{self, Write};

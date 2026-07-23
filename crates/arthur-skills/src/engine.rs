@@ -170,7 +170,7 @@ fn owned_state(asset: &OwnedAsset) -> OwnedAssetState {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::error::Error as _;
     use std::fs;

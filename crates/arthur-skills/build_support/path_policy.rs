@@ -70,11 +70,11 @@ pub fn normalized_mode(path: &Path, metadata: &std::fs::Metadata) -> Result<u32,
     }
     #[cfg(not(unix))]
     {
-        let _ = metadata;
-        Err(format!(
-            "{}: catalog generation supports Linux and macOS only",
-            path.display()
-        ))
+        if metadata.is_file() {
+            Ok(0o644)
+        } else {
+            Err(format!("{}: catalog source is not a file", path.display()))
+        }
     }
 }
 

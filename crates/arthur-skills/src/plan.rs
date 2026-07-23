@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::io;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+
+use crate::platform::{
+    effective_directory_mode, effective_file_mode, metadata_mode,
+    normalize_absolute as normalize_platform_path, path_key as os_path_key,
+};
 
 pub const PLAN_SCHEMA_VERSION: u16 = 1;
 
@@ -101,8 +104,8 @@ pub enum DesiredPayload {
 impl DesiredPayload {
     pub fn expected(&self) -> ExpectedNode {
         match self {
-            Self::Directory { mode } => ExpectedNode::directory(*mode),
-            Self::File { bytes, mode } => ExpectedNode::file(bytes, *mode),
+            Self::Directory { mode } => ExpectedNode::directory(effective_directory_mode(*mode)),
+            Self::File { bytes, mode } => ExpectedNode::file(bytes, effective_file_mode(*mode)),
             Self::Symlink { target, .. } => ExpectedNode::symlink(target.clone()),
         }
     }
@@ -212,7 +215,7 @@ impl Diagnostic {
     fn path_error(code: &str, message: String, path: &Path) -> Self {
         let (path_utf8, path_bytes_hex) = match path.to_str() {
             Some(path) => (Some(path.to_owned()), None),
-            None => (None, Some(hex(path.as_os_str().as_bytes()))),
+            None => (None, Some(hex(&os_path_key(path.as_os_str())))),
         };
         Self {
             code: code.to_owned(),
@@ -729,7 +732,7 @@ fn inspect_path(path: &Path) -> io::Result<Option<PathSnapshot>> {
         return Ok(Some(PathSnapshot {
             kind: NodeKind::File,
             sha256: Some(sha256(&fs::read(path)?)),
-            mode: Some(metadata.permissions().mode() & 0o7777),
+            mode: Some(metadata_mode(&metadata)),
             link_target: None,
         }));
     }
@@ -737,7 +740,7 @@ fn inspect_path(path: &Path) -> io::Result<Option<PathSnapshot>> {
         return Ok(Some(PathSnapshot {
             kind: NodeKind::Directory,
             sha256: None,
-            mode: Some(metadata.permissions().mode() & 0o7777),
+            mode: Some(metadata_mode(&metadata)),
             link_target: None,
         }));
     }
@@ -916,7 +919,7 @@ fn operation_id(source_id: &str, kind: MutationKind, destination: &Path) -> Stri
     digest.update([0]);
     digest.update(format!("{kind:?}").as_bytes());
     digest.update([0]);
-    digest.update(destination.as_os_str().as_bytes());
+    digest.update(os_path_key(destination.as_os_str()));
     format!("{:x}", digest.finalize())[..16].to_owned()
 }
 
@@ -993,28 +996,11 @@ fn resolve_link_target(link: &Path, target: &Path) -> Option<PathBuf> {
 }
 
 fn normalize_absolute(path: &Path) -> Option<PathBuf> {
-    if !path.is_absolute() {
-        return None;
-    }
-    let mut normalized = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::RootDir => normalized.push(component.as_os_str()),
-            Component::Normal(part) => normalized.push(part),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return None;
-                }
-            }
-            Component::Prefix(_) => return None,
-        }
-    }
-    Some(normalized)
+    normalize_platform_path(path)
 }
 
 fn path_key(path: &Path) -> Vec<u8> {
-    path.as_os_str().as_bytes().to_vec()
+    os_path_key(path.as_os_str())
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -1031,7 +1017,7 @@ fn hex(bytes: &[u8]) -> String {
     encoded
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::error::Error;
     use std::fs;

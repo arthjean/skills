@@ -2,13 +2,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs::{self, File, Metadata};
 use std::io::{self, Read};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::MetadataExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::de::{DeserializeOwned, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sha2::{Digest, Sha256};
+
+use crate::platform::{
+    is_normalized_absolute, metadata_device, metadata_inode, metadata_mode,
+    metadata_mtime_nanoseconds, metadata_mtime_seconds, path_key,
+};
 
 const LEGACY_LOCK_VERSION: u8 = 3;
 
@@ -323,14 +326,8 @@ fn validate_catalog_entry(entry: &CatalogEntry, diagnostics: &mut Vec<AdoptionDi
             "source_id must not be empty",
         ));
     }
-    if entry.destination.as_os_str().as_bytes().is_empty()
-        || !entry.destination.is_absolute()
-        || entry.destination.components().any(|component| {
-            matches!(
-                component,
-                Component::CurDir | Component::ParentDir | Component::Prefix(_)
-            )
-        })
+    if path_key(entry.destination.as_os_str()).is_empty()
+        || !is_normalized_absolute(&entry.destination)
     {
         diagnostics.push(diagnostic(
             DiagnosticCode::InvalidCatalogEntry,
@@ -346,7 +343,7 @@ fn validate_catalog_entry(entry: &CatalogEntry, diagnostics: &mut Vec<AdoptionDi
             Some(&entry.destination),
             &format!(
                 "destination is not UTF-8 (hex: {})",
-                hex(entry.destination.as_os_str().as_bytes())
+                hex(&path_key(entry.destination.as_os_str()))
             ),
         ));
     }
@@ -407,7 +404,7 @@ fn validate_catalog_entry(entry: &CatalogEntry, diagnostics: &mut Vec<AdoptionDi
             Some(&entry.destination),
             &format!(
                 "link target is not UTF-8 (hex: {})",
-                hex(target.as_os_str().as_bytes())
+                hex(&path_key(target.as_os_str()))
             ),
         ));
     }
@@ -463,7 +460,7 @@ fn inspect_entry(
         return Err(diagnostics);
     }
 
-    let actual_mode = metadata.mode() & 0o7777;
+    let actual_mode = metadata_mode(&metadata);
     if actual_mode != expected.mode {
         diagnostics.push(diagnostic(
             DiagnosticCode::ModeMismatch,
@@ -568,10 +565,10 @@ fn fingerprint(path: &Path, entry_type: EntryType) -> Result<(String, Option<Pat
             if target.to_str().is_none() {
                 return Err(format!(
                     "symlink target is not UTF-8 (hex: {})",
-                    hex(target.as_os_str().as_bytes())
+                    hex(&path_key(target.as_os_str()))
                 ));
             }
-            let hash = format!("{:x}", Sha256::digest(target.as_os_str().as_bytes()));
+            let hash = format!("{:x}", Sha256::digest(path_key(target.as_os_str())));
             Ok((hash, Some(target)))
         }
         EntryType::Directory => hash_directory(path).map(|hash| (hash, None)),
@@ -623,7 +620,7 @@ fn collect_directory_records(
         let relative = relative.to_str().ok_or_else(|| {
             format!(
                 "catalog path is not UTF-8 (hex: {})",
-                hex(relative.as_os_str().as_bytes())
+                hex(&path_key(relative.as_os_str()))
             )
         })?;
         let metadata = fs::symlink_metadata(&path)
@@ -634,7 +631,7 @@ fn collect_directory_records(
         records.push(DirectoryRecord {
             relative_path: relative.to_owned(),
             entry_type: kind,
-            mode: metadata.mode() & 0o7777,
+            mode: metadata_mode(&metadata),
             hash,
         });
         if kind == EntryType::Directory {
@@ -733,11 +730,11 @@ fn concurrent_read_error(path: &Path) -> AdoptionError {
 
 fn file_identity(metadata: &Metadata) -> LockIdentity {
     LockIdentity {
-        device: metadata.dev(),
-        inode: metadata.ino(),
-        size: metadata.size(),
-        mtime_seconds: metadata.mtime(),
-        mtime_nanoseconds: metadata.mtime_nsec(),
+        device: metadata_device(metadata),
+        inode: metadata_inode(metadata),
+        size: metadata.len(),
+        mtime_seconds: metadata_mtime_seconds(metadata),
+        mtime_nanoseconds: metadata_mtime_nanoseconds(metadata),
     }
 }
 
@@ -747,21 +744,14 @@ fn require_utf8(path: &Path, role: &'static str) -> Result<(), AdoptionError> {
     } else {
         Err(AdoptionError::InvalidPath {
             role,
-            bytes_hex: hex(path.as_os_str().as_bytes()),
+            bytes_hex: hex(&path_key(path.as_os_str())),
         })
     }
 }
 
 fn require_safe_absolute(path: &Path, role: &'static str) -> Result<(), AdoptionError> {
     require_utf8(path, role)?;
-    if path.is_absolute()
-        && path.components().all(|component| {
-            !matches!(
-                component,
-                Component::CurDir | Component::ParentDir | Component::Prefix(_)
-            )
-        })
-    {
+    if is_normalized_absolute(path) {
         Ok(())
     } else {
         Err(AdoptionError::UnsafePath {
@@ -975,11 +965,11 @@ where
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::ffi::OsString;
-    use std::os::unix::ffi::OsStringExt;
-    use std::os::unix::fs::{PermissionsExt, symlink};
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
     use std::os::unix::net::UnixListener;
 
     use tempfile::TempDir;

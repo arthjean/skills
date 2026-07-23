@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::platform::{is_normalized_absolute, normalize_absolute};
 use crate::provider::{
     ENVIRONMENT_EXIT_CODE, ProviderId, ProviderRegistry, ResolvedRoots, RootIdentity,
 };
@@ -287,7 +288,7 @@ pub enum ReceiptError {
         source_id: String,
         detail: &'static str,
     },
-    RootMismatch(RootMismatch),
+    RootMismatch(Box<RootMismatch>),
 }
 
 impl ReceiptError {
@@ -358,11 +359,11 @@ fn compare_root(
     if recorded == current {
         return Ok(());
     }
-    Err(ReceiptError::RootMismatch(RootMismatch {
+    Err(ReceiptError::RootMismatch(Box::new(RootMismatch {
         root,
         recorded: recorded.clone(),
         current: current.clone(),
-    }))
+    })))
 }
 
 fn validate_root(field: &'static str, root: &RootIdentity) -> Result<(), ReceiptError> {
@@ -371,14 +372,7 @@ fn validate_root(field: &'static str, root: &RootIdentity) -> Result<(), Receipt
 }
 
 fn validate_absolute_path(field: &'static str, path: &Path) -> Result<(), ReceiptError> {
-    let is_normalized = path.is_absolute()
-        && path.to_str().is_some()
-        && path.components().all(|component| {
-            !matches!(
-                component,
-                Component::CurDir | Component::ParentDir | Component::Prefix(_)
-            )
-        });
+    let is_normalized = path.to_str().is_some() && is_normalized_absolute(path);
     if is_normalized {
         Ok(())
     } else {
@@ -535,23 +529,7 @@ fn destination_is_under_recorded_root(destination: &Path, receipt: &Receipt) -> 
 }
 
 fn normalize_path(path: &Path) -> Option<PathBuf> {
-    if !path.is_absolute() {
-        return None;
-    }
-    let mut normalized = PathBuf::from("/");
-    for component in path.components() {
-        match component {
-            Component::RootDir | Component::CurDir => {}
-            Component::Normal(part) => normalized.push(part),
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return None;
-                }
-            }
-            Component::Prefix(_) => return None,
-        }
-    }
-    Some(normalized)
+    normalize_absolute(path)
 }
 
 fn valid_sha256(value: &str) -> bool {
@@ -1225,11 +1203,11 @@ mod tests {
                 INTEGRITY_EXIT_CODE,
             ),
             (
-                ReceiptError::RootMismatch(RootMismatch {
+                ReceiptError::RootMismatch(Box::new(RootMismatch {
                     root: RootScope::Canonical,
                     recorded: identity("/recorded", 1),
                     current: identity("/current", 2),
-                }),
+                })),
                 "canonical root identity differs from the receipt; restore the original environment before migration",
                 ENVIRONMENT_EXIT_CODE,
             ),

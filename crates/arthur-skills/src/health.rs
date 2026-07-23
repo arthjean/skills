@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -8,6 +7,7 @@ use serde::Serialize;
 use crate::catalog::Catalog;
 use crate::lifecycle::{LifecycleIntent, prepare_lifecycle_transition};
 use crate::plan::PlanAction;
+use crate::platform::{effective_directory_mode, effective_file_mode, metadata_mode};
 use crate::provider::{ProviderId, ResolvedRoots};
 use crate::receipt::{OwnedAsset, OwnedAssetKind, Receipt};
 use crate::transaction::{PathKind, snapshot_path};
@@ -359,7 +359,7 @@ fn inspect_owner_writable(path: &Path, issues: &mut Vec<HealthIssue>) {
     let Ok(metadata) = fs::metadata(path) else {
         return;
     };
-    if metadata.permissions().mode() & 0o200 == 0 {
+    if !owner_writable(&metadata) {
         issues.push(issue(
             "root_not_writable",
             IssueSeverity::Error,
@@ -369,11 +369,28 @@ fn inspect_owner_writable(path: &Path, issues: &mut Vec<HealthIssue>) {
     }
 }
 
+#[cfg(unix)]
+fn owner_writable(metadata: &fs::Metadata) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    metadata.permissions().mode() & 0o200 != 0
+}
+
+#[cfg(windows)]
+fn owner_writable(metadata: &fs::Metadata) -> bool {
+    !metadata.permissions().readonly()
+}
+
 fn inspect_private_mode(path: &Path, expected: u32, issues: &mut Vec<HealthIssue>) {
     let Ok(metadata) = fs::symlink_metadata(path) else {
         return;
     };
-    let observed = metadata.permissions().mode() & 0o777;
+    let expected = if metadata.is_dir() {
+        effective_directory_mode(expected)
+    } else {
+        effective_file_mode(expected)
+    };
+    let observed = metadata_mode(&metadata) & 0o777;
     if observed != expected {
         issues.push(issue(
             "state_permissions_invalid",
@@ -398,7 +415,7 @@ fn issue(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::collections::BTreeSet;
     use std::ffi::OsString;

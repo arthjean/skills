@@ -1,20 +1,30 @@
 use std::collections::BTreeMap;
+#[cfg(unix)]
 use std::ffi::OsString;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use fs2::FileExt;
-use rustix::fs::{AtFlags, Mode, OFlags, RawMode, RenameFlags};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use signal_hook::consts::signal::{SIGINT, SIGTERM};
 
 #[cfg(unix)]
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+use rustix::fs::{AtFlags, Mode, OFlags, RawMode, RenameFlags};
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
+use crate::platform::{
+    effective_directory_mode, effective_file_mode, metadata_device as platform_metadata_device,
+    metadata_inode as platform_metadata_inode, metadata_mode as platform_metadata_mode,
+    metadata_mtime_nanoseconds as platform_metadata_mtime_nanoseconds,
+    metadata_mtime_seconds as platform_metadata_mtime_seconds, open_directory,
+    set_mode as platform_set_mode, sync_directory_handle,
+};
 
 pub const TRANSACTION_SCHEMA_VERSION: u16 = 1;
 pub const TRANSACTION_EXIT_CODE: u8 = 5;
@@ -135,7 +145,7 @@ pub fn snapshot_path(path: &Path) -> Result<PathSnapshot, TransactionError> {
         return Ok(PathSnapshot::symlink(target).with_identity(&after));
     }
     if file_type.is_dir() {
-        let directory = File::open(path)
+        let directory = open_directory(path)
             .map_err(|error| TransactionError::io("open directory", path, error))?;
         let opened = directory
             .metadata()
@@ -668,7 +678,7 @@ impl TransactionLock {
                 if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
                     return Err(TransactionError::InsecureStatePath(path.to_path_buf()));
                 }
-                if metadata_mode(&metadata) != 0o600 {
+                if metadata_mode(&metadata) != effective_file_mode(0o600) {
                     return Err(TransactionError::InsecureStatePath(path.to_path_buf()));
                 }
                 Some(metadata)
@@ -714,12 +724,11 @@ impl TransactionLock {
                 TransactionError::io("lock transaction", path, error)
             }
         })?;
-        if metadata_mode(&opened) != 0o600 {
+        if metadata_mode(&opened) != effective_file_mode(0o600) {
             if before.is_some() {
                 return Err(TransactionError::InsecureStatePath(path.to_path_buf()));
             }
-            #[cfg(unix)]
-            file.set_permissions(fs::Permissions::from_mode(0o600))
+            platform_set_mode(path, 0o600)
                 .map_err(|error| TransactionError::io("set transaction lock mode", path, error))?;
         }
         Ok(Self { file })
@@ -1261,9 +1270,7 @@ impl TransactionEngine {
             .map_err(|error| TransactionError::Journal(error.to_string()))?;
         let temporary = self.journal_temporary_path();
         write_new_durable_file(&temporary, &bytes, 0o600)?;
-        fs::rename(&temporary, self.journal_path()).map_err(|error| {
-            TransactionError::io("replace transaction journal", &self.journal_path(), error)
-        })?;
+        replace_file_atomic(&temporary, &self.journal_path())?;
         sync_directory(&self.state_directory)
     }
 
@@ -1839,9 +1846,7 @@ fn write_new_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), Transactio
     let mut file = options
         .open(path)
         .map_err(|error| TransactionError::io("create staged file", path, error))?;
-    #[cfg(unix)]
-    file.set_permissions(fs::Permissions::from_mode(mode))
-        .map_err(|error| TransactionError::io("set staged file mode", path, error))?;
+    set_file_mode(path, mode)?;
     file.write_all(bytes)
         .map_err(|error| TransactionError::io("write staged file", path, error))?;
     file.flush()
@@ -1859,9 +1864,7 @@ fn write_new_durable_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), Tr
     let mut file = options
         .open(path)
         .map_err(|error| TransactionError::io("create durable file", path, error))?;
-    #[cfg(unix)]
-    file.set_permissions(fs::Permissions::from_mode(mode))
-        .map_err(|error| TransactionError::io("set durable file mode", path, error))?;
+    set_file_mode(path, mode)?;
     file.write_all(bytes)
         .map_err(|error| TransactionError::io("write durable file", path, error))?;
     file.flush()
@@ -1870,13 +1873,25 @@ fn write_new_durable_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), Tr
         .map_err(|error| TransactionError::io("fsync durable file", path, error))
 }
 
+#[cfg(unix)]
+fn replace_file_atomic(source: &Path, destination: &Path) -> Result<(), TransactionError> {
+    fs::rename(source, destination)
+        .map_err(|error| TransactionError::io("replace durable file", destination, error))
+}
+
+#[cfg(windows)]
+fn replace_file_atomic(source: &Path, destination: &Path) -> Result<(), TransactionError> {
+    atomicwrites::replace_atomic(source, destination)
+        .map_err(|error| TransactionError::io("replace durable file", destination, error))
+}
+
 fn ensure_private_directory(path: &Path) -> Result<(), TransactionError> {
     require_utf8(path)?;
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
             if !metadata.file_type().is_dir()
                 || metadata.file_type().is_symlink()
-                || metadata_mode(&metadata) != 0o700
+                || metadata_mode(&metadata) != effective_directory_mode(0o700)
             {
                 return Err(TransactionError::InsecureStatePath(path.to_path_buf()));
             }
@@ -1910,7 +1925,7 @@ fn validate_private_file(path: &Path, mode: u32) -> Result<(), TransactionError>
         .map_err(|error| TransactionError::io("inspect private state file", path, error))?;
     if !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()
-        || metadata_mode(&metadata) != mode
+        || metadata_mode(&metadata) != effective_file_mode(mode)
     {
         return Err(TransactionError::InsecureStatePath(path.to_path_buf()));
     }
@@ -1945,6 +1960,7 @@ fn snapshot_matches_expected(observed: &PathSnapshot, expected: &PathSnapshot) -
 
 struct VerifiedParent {
     directory: File,
+    #[cfg(unix)]
     leaf: OsString,
 }
 
@@ -1981,7 +1997,7 @@ fn stable_parent(
             root: parent.to_path_buf(),
         });
     }
-    let directory = File::open(parent)
+    let directory = open_directory(parent)
         .map_err(|error| TransactionError::io("open mutation parent", parent, error))?;
     let opened = directory
         .metadata()
@@ -2007,9 +2023,14 @@ fn stable_parent(
             });
         }
     }
-    Ok(VerifiedParent { directory, leaf })
+    Ok(VerifiedParent {
+        directory,
+        #[cfg(unix)]
+        leaf,
+    })
 }
 
+#[cfg(unix)]
 fn rename_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), TransactionError> {
     let source = stable_parent(staged, None)?;
     let destination = verified_destination_parent(operation)?;
@@ -2027,15 +2048,37 @@ fn rename_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), 
             error.into(),
         )
     })?;
-    source
-        .directory
-        .sync_all()
+    sync_directory_handle(&source.directory)
         .map_err(|error| TransactionError::io("fsync staging parent", staged, error))?;
-    destination.directory.sync_all().map_err(|error| {
+    sync_directory_handle(&destination.directory).map_err(|error| {
         TransactionError::io("fsync destination parent", &operation.destination, error)
     })
 }
 
+#[cfg(windows)]
+fn rename_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), TransactionError> {
+    let source = stable_parent(staged, None)?;
+    let destination = verified_destination_parent(operation)?;
+    if path_exists(&operation.destination)? {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            operation.destination.clone(),
+        ));
+    }
+    fs::rename(staged, &operation.destination).map_err(|error| {
+        TransactionError::io(
+            "install staged path without replacement",
+            &operation.destination,
+            error,
+        )
+    })?;
+    sync_directory_handle(&source.directory)
+        .map_err(|error| TransactionError::io("fsync staging parent", staged, error))?;
+    sync_directory_handle(&destination.directory).map_err(|error| {
+        TransactionError::io("fsync destination parent", &operation.destination, error)
+    })
+}
+
+#[cfg(unix)]
 fn link_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), TransactionError> {
     let source = stable_parent(staged, None)?;
     let destination = verified_destination_parent(operation)?;
@@ -2053,11 +2096,33 @@ fn link_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), Tr
             error.into(),
         )
     })?;
-    destination.directory.sync_all().map_err(|error| {
+    sync_directory_handle(&destination.directory).map_err(|error| {
         TransactionError::io("fsync destination parent", &operation.destination, error)
     })
 }
 
+#[cfg(windows)]
+fn link_staged_no_replace(staged: &Path, operation: &Operation) -> Result<(), TransactionError> {
+    let _source = stable_parent(staged, None)?;
+    let destination = verified_destination_parent(operation)?;
+    if path_exists(&operation.destination)? {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            operation.destination.clone(),
+        ));
+    }
+    fs::hard_link(staged, &operation.destination).map_err(|error| {
+        TransactionError::io(
+            "install staged file without replacement",
+            &operation.destination,
+            error,
+        )
+    })?;
+    sync_directory_handle(&destination.directory).map_err(|error| {
+        TransactionError::io("fsync destination parent", &operation.destination, error)
+    })
+}
+
+#[cfg(unix)]
 fn rename_destination_to_backup(
     operation: &Operation,
     backup: &Path,
@@ -2072,15 +2137,35 @@ fn rename_destination_to_backup(
         RenameFlags::NOREPLACE,
     )
     .map_err(|error| TransactionError::io("move path to backup", backup, error.into()))?;
-    source.directory.sync_all().map_err(|error| {
+    sync_directory_handle(&source.directory).map_err(|error| {
         TransactionError::io("fsync destination parent", &operation.destination, error)
     })?;
-    destination
-        .directory
-        .sync_all()
+    sync_directory_handle(&destination.directory)
         .map_err(|error| TransactionError::io("fsync backup parent", backup, error))
 }
 
+#[cfg(windows)]
+fn rename_destination_to_backup(
+    operation: &Operation,
+    backup: &Path,
+) -> Result<(), TransactionError> {
+    let source = verified_destination_parent(operation)?;
+    let destination = stable_parent(backup, None)?;
+    if path_exists(backup)? {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            backup.to_path_buf(),
+        ));
+    }
+    fs::rename(&operation.destination, backup)
+        .map_err(|error| TransactionError::io("move path to backup", backup, error))?;
+    sync_directory_handle(&source.directory).map_err(|error| {
+        TransactionError::io("fsync destination parent", &operation.destination, error)
+    })?;
+    sync_directory_handle(&destination.directory)
+        .map_err(|error| TransactionError::io("fsync backup parent", backup, error))
+}
+
+#[cfg(unix)]
 fn rename_backup_to_destination(
     backup: &Path,
     operation: &Operation,
@@ -2101,11 +2186,31 @@ fn rename_backup_to_destination(
             error.into(),
         )
     })?;
-    source
-        .directory
-        .sync_all()
+    sync_directory_handle(&source.directory)
         .map_err(|error| TransactionError::io("fsync backup parent", backup, error))?;
-    destination.directory.sync_all().map_err(|error| {
+    sync_directory_handle(&destination.directory).map_err(|error| {
+        TransactionError::io("fsync destination parent", &operation.destination, error)
+    })
+}
+
+#[cfg(windows)]
+fn rename_backup_to_destination(
+    backup: &Path,
+    operation: &Operation,
+) -> Result<(), TransactionError> {
+    let source = stable_parent(backup, None)?;
+    let destination = verified_destination_parent(operation)?;
+    if path_exists(&operation.destination)? {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            operation.destination.clone(),
+        ));
+    }
+    fs::rename(backup, &operation.destination).map_err(|error| {
+        TransactionError::io("restore transaction backup", &operation.destination, error)
+    })?;
+    sync_directory_handle(&source.directory)
+        .map_err(|error| TransactionError::io("fsync backup parent", backup, error))?;
+    sync_directory_handle(&destination.directory).map_err(|error| {
         TransactionError::io("fsync destination parent", &operation.destination, error)
     })
 }
@@ -2123,6 +2228,7 @@ fn remove_verified_path(path: &Path, expected: &PathSnapshot) -> Result<(), Tran
     unlink_verified(&parent, path, expected)
 }
 
+#[cfg(unix)]
 fn unlink_verified(
     parent: &VerifiedParent,
     path: &Path,
@@ -2149,12 +2255,49 @@ fn unlink_verified(
     rustix::fs::unlinkat(&parent.directory, &parent.leaf, flags).map_err(|error| {
         TransactionError::io("remove transaction-owned destination", path, error.into())
     })?;
-    parent
-        .directory
-        .sync_all()
+    sync_directory_handle(&parent.directory)
         .map_err(|error| TransactionError::io("fsync destination parent", path, error))
 }
 
+#[cfg(windows)]
+fn unlink_verified(
+    parent: &VerifiedParent,
+    path: &Path,
+    expected: &PathSnapshot,
+) -> Result<(), TransactionError> {
+    let observed = snapshot_path(path)?;
+    if !snapshot_matches_expected(&observed, expected) {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            path.to_path_buf(),
+        ));
+    }
+    if expected.kind == PathKind::Directory {
+        fs::remove_dir(path).map_err(|error| {
+            TransactionError::io("remove transaction-owned directory", path, error)
+        })?;
+    } else {
+        let was_read_only = observed.mode == Some(0o444);
+        if was_read_only {
+            platform_set_mode(path, 0o644).map_err(|error| {
+                TransactionError::io("make transaction-owned path removable", path, error)
+            })?;
+        }
+        if let Err(error) = fs::remove_file(path) {
+            if was_read_only && platform_set_mode(path, 0o444).is_err() {
+                return Err(TransactionError::RecoveryRequired);
+            }
+            return Err(TransactionError::io(
+                "remove transaction-owned path",
+                path,
+                error,
+            ));
+        }
+    }
+    sync_directory_handle(&parent.directory)
+        .map_err(|error| TransactionError::io("fsync destination parent", path, error))
+}
+
+#[cfg(unix)]
 fn set_destination_mode(operation: &Operation, mode: u32) -> Result<(), TransactionError> {
     let parent = verified_destination_parent(operation)?;
     let mut flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW;
@@ -2196,7 +2339,25 @@ fn set_destination_mode(operation: &Operation, mode: u32) -> Result<(), Transact
     rustix::fs::fsync(&node).map_err(|error| {
         TransactionError::io("fsync destination", &operation.destination, error.into())
     })?;
-    parent.directory.sync_all().map_err(|error| {
+    sync_directory_handle(&parent.directory).map_err(|error| {
+        TransactionError::io("fsync destination parent", &operation.destination, error)
+    })
+}
+
+#[cfg(windows)]
+fn set_destination_mode(operation: &Operation, mode: u32) -> Result<(), TransactionError> {
+    let parent = verified_destination_parent(operation)?;
+    let observed = snapshot_path(&operation.destination)?;
+    if !snapshot_matches_expected(&observed, &operation.precondition) {
+        return Err(TransactionError::ConcurrentFilesystemChange(
+            operation.destination.clone(),
+        ));
+    }
+    platform_set_mode(&operation.destination, mode).map_err(|error| {
+        TransactionError::io("set destination mode", &operation.destination, error)
+    })?;
+    sync_node(&operation.destination)?;
+    sync_directory_handle(&parent.directory).map_err(|error| {
         TransactionError::io("fsync destination parent", &operation.destination, error)
     })
 }
@@ -2220,6 +2381,7 @@ fn created_path_is_transaction_owned(
     }
 }
 
+#[cfg(unix)]
 fn numeric_u64<T>(value: T) -> Option<u64>
 where
     T: TryInto<u64>,
@@ -2227,7 +2389,7 @@ where
     value.try_into().ok()
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn remove_path(path: &Path) -> Result<(), TransactionError> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|error| TransactionError::io("inspect path for removal", path, error))?;
@@ -2252,29 +2414,13 @@ fn create_symlink(_target: &Path, path: &Path) -> Result<(), TransactionError> {
     ))
 }
 
-#[cfg(unix)]
 fn metadata_mode(metadata: &fs::Metadata) -> u32 {
-    metadata.mode() & 0o7777
+    platform_metadata_mode(metadata)
 }
 
-#[cfg(not(unix))]
-fn metadata_mode(metadata: &fs::Metadata) -> u32 {
-    if metadata.permissions().readonly() {
-        0o444
-    } else {
-        0o644
-    }
-}
-
-#[cfg(unix)]
 fn set_file_mode(path: &Path, mode: u32) -> Result<(), TransactionError> {
-    fs::set_permissions(path, fs::Permissions::from_mode(mode))
-        .map_err(|error| TransactionError::io("set POSIX mode", path, error))
-}
-
-#[cfg(not(unix))]
-fn set_file_mode(_path: &Path, _mode: u32) -> Result<(), TransactionError> {
-    Ok(())
+    platform_set_mode(path, mode)
+        .map_err(|error| TransactionError::io("set filesystem mode", path, error))
 }
 
 fn sync_parent(path: &Path) -> Result<(), TransactionError> {
@@ -2285,6 +2431,9 @@ fn sync_parent(path: &Path) -> Result<(), TransactionError> {
 }
 
 fn sync_node(path: &Path) -> Result<(), TransactionError> {
+    if fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir()) {
+        return sync_directory(path);
+    }
     let node = File::open(path)
         .map_err(|error| TransactionError::io("open path for fsync", path, error))?;
     node.sync_all()
@@ -2292,10 +2441,9 @@ fn sync_node(path: &Path) -> Result<(), TransactionError> {
 }
 
 fn sync_directory(path: &Path) -> Result<(), TransactionError> {
-    let directory = File::open(path)
+    let directory = open_directory(path)
         .map_err(|error| TransactionError::io("open directory for fsync", path, error))?;
-    directory
-        .sync_all()
+    sync_directory_handle(&directory)
         .map_err(|error| TransactionError::io("fsync directory", path, error))
 }
 
@@ -2359,14 +2507,8 @@ fn nearest_existing(path: &Path) -> Result<&Path, TransactionError> {
         .ok_or_else(|| TransactionError::InvalidPath(path.to_path_buf()))
 }
 
-#[cfg(unix)]
 fn metadata_device(metadata: &fs::Metadata) -> u64 {
-    metadata.dev()
-}
-
-#[cfg(not(unix))]
-fn metadata_device(_metadata: &fs::Metadata) -> u64 {
-    0
+    platform_metadata_device(metadata)
 }
 
 fn require_utf8(path: &Path) -> Result<(), TransactionError> {
@@ -2377,13 +2519,7 @@ fn require_utf8(path: &Path) -> Result<(), TransactionError> {
 }
 
 fn is_normalized_absolute(path: &Path) -> bool {
-    path.is_absolute()
-        && path.components().all(|component| {
-            !matches!(
-                component,
-                Component::CurDir | Component::ParentDir | Component::Prefix(_)
-            )
-        })
+    crate::platform::is_normalized_absolute(path)
 }
 
 fn validate_transaction_id(transaction_id: &str) -> Result<(), TransactionError> {
@@ -2425,37 +2561,19 @@ fn revalidate_file_identity(
     Ok(())
 }
 
-#[cfg(unix)]
 fn metadata_inode(metadata: &fs::Metadata) -> u64 {
-    metadata.ino()
+    platform_metadata_inode(metadata)
 }
 
-#[cfg(not(unix))]
-fn metadata_inode(_metadata: &fs::Metadata) -> u64 {
-    0
-}
-
-#[cfg(unix)]
 fn metadata_mtime_seconds(metadata: &fs::Metadata) -> i64 {
-    metadata.mtime()
+    platform_metadata_mtime_seconds(metadata)
 }
 
-#[cfg(not(unix))]
-fn metadata_mtime_seconds(_metadata: &fs::Metadata) -> i64 {
-    0
-}
-
-#[cfg(unix)]
 fn metadata_mtime_nanoseconds(metadata: &fs::Metadata) -> i64 {
-    metadata.mtime_nsec()
+    platform_metadata_mtime_nanoseconds(metadata)
 }
 
-#[cfg(not(unix))]
-fn metadata_mtime_nanoseconds(_metadata: &fs::Metadata) -> i64 {
-    0
-}
-
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     #[cfg(not(coverage))]
     use std::env;

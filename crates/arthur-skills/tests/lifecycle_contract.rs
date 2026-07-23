@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStringExt;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -20,6 +21,30 @@ use arthur_skills::transaction::{
 use tempfile::TempDir;
 
 type TestResult = Result<(), Box<dyn Error>>;
+
+#[cfg(unix)]
+fn observed_mode(path: &Path) -> Result<u32, std::io::Error> {
+    Ok(fs::metadata(path)?.permissions().mode() & 0o777)
+}
+
+#[cfg(windows)]
+fn observed_mode(path: &Path) -> Result<u32, std::io::Error> {
+    Ok(if fs::metadata(path)?.permissions().readonly() {
+        0o444
+    } else {
+        0o644
+    })
+}
+
+#[cfg(unix)]
+fn set_directory_mode(path: &Path, mode: u32) -> Result<(), std::io::Error> {
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+}
+
+#[cfg(windows)]
+fn set_directory_mode(_path: &Path, _mode: u32) -> Result<(), std::io::Error> {
+    Ok(())
+}
 
 fn roots(home: &TempDir, providers: &[ProviderId]) -> Result<ResolvedRoots, Box<dyn Error>> {
     Ok(resolve_roots_from(
@@ -112,10 +137,13 @@ fn fresh_install_materializes_the_catalog_without_claiming_foreign_assets() -> T
                     .file_name()
                     .ok_or("skill has no name")?;
                 let activation = home.path().join(".claude/skills").join(name);
+                #[cfg(unix)]
                 assert_eq!(
                     fs::read_link(&activation)?,
                     Path::new("../../.agents/skills").join(name)
                 );
+                #[cfg(windows)]
+                assert!(activation.is_dir());
                 for record in &asset.files {
                     let relative = Path::new(&record.relative_path).strip_prefix("skills")?;
                     let destination = roots.canonical_skills.join(relative);
@@ -124,8 +152,13 @@ fn fresh_install_materializes_the_catalog_without_claiming_foreign_assets() -> T
                         .ok_or("embedded skill file is missing")?;
                     assert_eq!(fs::read(&destination)?, embedded.bytes);
                     assert_eq!(
-                        fs::metadata(&destination)?.permissions().mode() & 0o777,
-                        record.mode
+                        observed_mode(&destination)?,
+                        if cfg!(windows) { 0o644 } else { record.mode }
+                    );
+                    #[cfg(windows)]
+                    assert_eq!(
+                        fs::read(home.path().join(".claude/skills").join(relative))?,
+                        embedded.bytes
                     );
                 }
             }
@@ -181,7 +214,7 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
     let catalog = Catalog::load()?;
     let collision = collision_roots.canonical_skills.join("baseline-ui");
     fs::create_dir_all(&collision)?;
-    fs::set_permissions(&collision, fs::Permissions::from_mode(0o755))?;
+    set_directory_mode(&collision, 0o755)?;
     let blocked = prepare_lifecycle_transition(
         &catalog,
         &collision_roots,

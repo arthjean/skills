@@ -1,8 +1,10 @@
 #![forbid(unsafe_code)]
 
 use std::error::Error;
+#[cfg(unix)]
 use std::ffi::OsString;
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -253,6 +255,7 @@ fn documented_exit_codes_cover_environment_and_conflict_failures() -> TestResult
     let missing_home = Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
         .args(["--json", "status"])
         .env_remove("HOME")
+        .env_remove("USERPROFILE")
         .output()?;
     assert_eq!(missing_home.status.code(), Some(4));
 
@@ -291,7 +294,25 @@ fn documented_exit_codes_cover_environment_and_conflict_failures() -> TestResult
     Ok(())
 }
 
+#[cfg(windows)]
 #[test]
+fn userprofile_is_the_windows_home_fallback() -> TestResult {
+    let home = tempfile::tempdir()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
+        .args(["--json", "status"])
+        .env_remove("HOME")
+        .env("USERPROFILE", home.path())
+        .env("PATH", home.path().join(".arthur-empty-path"))
+        .output()?;
+    assert!(output.status.success());
+    let envelope = json_output(&output)?;
+    assert_eq!(envelope["status"], "noop");
+    assert!(!home.path().join(".agents").exists());
+    Ok(())
+}
+
+#[test]
+#[cfg(unix)]
 fn non_utf8_environment_path_has_lossless_json_diagnostics() -> TestResult {
     let parent = tempfile::tempdir()?;
     let home = parent

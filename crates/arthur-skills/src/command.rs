@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -19,6 +18,7 @@ use crate::output::{
     CONFLICT_EXIT_CODE, Envelope, OutputDiagnostic, OutputSeverity, OutputStatus, path_fields,
 };
 use crate::plain::{self, PlainExit};
+use crate::platform::metadata_mode;
 use crate::provider::{
     ENVIRONMENT_EXIT_CODE, ProviderId, ResolveError, ResolvedRoots, resolve_roots,
 };
@@ -844,7 +844,7 @@ fn adoption_entries(
             destination: entry.destination.clone(),
             entry_type,
             sha256: snapshot.sha256,
-            mode: metadata.permissions().mode() & 0o7777,
+            mode: metadata_mode(&metadata),
             link_target: snapshot.link_target,
         });
     }

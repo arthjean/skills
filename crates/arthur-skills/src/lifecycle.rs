@@ -319,6 +319,7 @@ fn insert_provider_containers(
     )
 }
 
+#[cfg(unix)]
 fn insert_claude_activations(
     catalog: &Catalog,
     roots: &ResolvedRoots,
@@ -351,6 +352,61 @@ fn insert_claude_activations(
             },
             &[ProviderId::Claude],
         )?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn insert_claude_activations(
+    catalog: &Catalog,
+    _roots: &ResolvedRoots,
+    provider: &ResolvedProvider,
+    desired: &mut BTreeMap<PathBuf, ManagedDesired>,
+) -> Result<(), LifecycleError> {
+    let skills_root = provider
+        .skills
+        .as_ref()
+        .ok_or(LifecycleError::MissingProviderRoot(ProviderId::Claude))?;
+    for asset in catalog
+        .manifest()
+        .assets
+        .iter()
+        .filter(|asset| asset.kind == AssetKind::Skill)
+    {
+        let asset_path = Path::new(&asset.relative_path);
+        let skill_relative = strip_catalog_prefix(asset_path, Path::new("skills"))?;
+        insert_directory(
+            desired,
+            format!("activation:claude:directory:{}", asset.relative_path),
+            skills_root.join(skill_relative),
+            &[ProviderId::Claude],
+        )?;
+        for record in &asset.files {
+            let record_path = Path::new(&record.relative_path);
+            let mut parent = record_path.parent();
+            while let Some(directory) = parent.filter(|path| path.starts_with(asset_path)) {
+                let relative = strip_catalog_prefix(directory, Path::new("skills"))?;
+                insert_directory(
+                    desired,
+                    format!("activation:claude:directory:{}", directory.display()),
+                    skills_root.join(relative),
+                    &[ProviderId::Claude],
+                )?;
+                if directory == asset_path {
+                    break;
+                }
+                parent = directory.parent();
+            }
+            let relative = strip_catalog_prefix(record_path, Path::new("skills"))?;
+            insert_catalog_file(
+                catalog,
+                desired,
+                &record.relative_path,
+                skills_root.join(relative),
+                record.mode,
+                &[ProviderId::Claude],
+            )?;
+        }
     }
     Ok(())
 }

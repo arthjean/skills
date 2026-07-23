@@ -474,7 +474,7 @@ fn snapshot_matches_plan(observed: &PathSnapshot, planned: &crate::plan::PathSna
         && observed.link_target == planned.link_target
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::error::Error as _;
     use std::fs;
