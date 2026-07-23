@@ -413,7 +413,10 @@ jobs:
           grep -F "$(basename "$windows_archive")" target/distrib/sha256.sum >/dev/null
           for pattern in '*installer.sh' '*installer.ps1'; do
             installer="$(find target/distrib -maxdepth 1 -type f -name "$pattern" -print -quit)"
-            grep -F "$(basename "$installer")" target/distrib/sha256.sum >/dev/null
+            test -n "$installer"
+            installer_name="$(basename "$installer")"
+            (cd target/distrib && sha256sum "$installer_name") >> target/distrib/sha256.sum
+            grep -F "$installer_name" target/distrib/sha256.sum >/dev/null
           done
           (cd target/distrib && sha256sum --check --strict sha256.sum)
       - name: Attest every release artifact
