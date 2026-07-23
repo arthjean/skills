@@ -34,7 +34,8 @@ pub enum Command {
     Status,
     /// Diagnose the receipt, transaction journal, and provider state.
     Doctor,
-    /// Reconcile managed providers to the embedded catalog.
+    /// Reconcile to this binary's embedded catalog; acquire a newer binary first to upgrade.
+    /// The command never updates its own executable and refuses catalog downgrades in v1.
     Update(ConfirmationArgs),
     /// Remove one provider integration, or all managed integrations.
     Uninstall(UninstallArgs),

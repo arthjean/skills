@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::catalog::{Manifest, Provider};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -51,6 +53,10 @@ pub fn assess(
     ProviderHealth::Healthy
 }
 
+pub fn compare_versions(left: &str, right: &str) -> Option<Ordering> {
+    Some(Version::parse(left)?.cmp(&Version::parse(right)?))
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct Version([u64; 3]);
 
@@ -71,7 +77,7 @@ impl Version {
 mod tests {
     use crate::catalog::{Catalog, Manifest, Provider, ProviderContract};
 
-    use super::{ProviderHealth, ProviderIssue, assess};
+    use super::{ProviderHealth, ProviderIssue, assess, compare_versions};
 
     #[test]
     fn provider_health_preserves_unknown_models_and_enforces_minimums() {
@@ -162,5 +168,14 @@ mod tests {
                 observed: "1.2.3.4".to_owned(),
             })
         );
+    }
+
+    #[test]
+    fn compares_strict_three_component_versions() {
+        assert_eq!(
+            compare_versions("1.2.4", "1.2.3"),
+            Some(std::cmp::Ordering::Greater)
+        );
+        assert_eq!(compare_versions("1.2", "1.2.0"), None);
     }
 }

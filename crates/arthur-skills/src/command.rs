@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -5,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use semver::Version;
 use serde_json::json;
 
 use crate::adoption::{self, CatalogEntry, EntryType};
@@ -89,8 +91,8 @@ pub fn execute(cli: &Cli) -> Envelope {
         Some(Command::Install(arguments)) => {
             run_install(&catalog, cli, arguments, presentation, &signals)
         }
-        Some(Command::Status) => run_status(&catalog, "status"),
-        Some(Command::Doctor) => run_doctor(&catalog),
+        Some(Command::Status) => crate::diagnostic::status(&catalog),
+        Some(Command::Doctor) => crate::diagnostic::doctor(&catalog),
         Some(Command::Update(arguments)) => {
             run_update(&catalog, cli, arguments, presentation, &signals)
         }
@@ -200,7 +202,7 @@ fn run_update(
     presentation: Presentation,
     signals: &SignalFlags,
 ) -> Envelope {
-    let (_, current) = match context(&[], "update") {
+    let (roots, current) = match context(&[], "update") {
         Ok(context) => context,
         Err(envelope) => return *envelope,
     };
@@ -213,15 +215,60 @@ fn run_update(
             "no Arthur Workflow receipt exists; run install first",
         );
     };
+    if receipt.state == ReceiptState::RecoveryRequired {
+        return recovery_required("update", managed_providers(&receipt));
+    }
+    let journal = TransactionEngine::new(roots.state_directory.clone(), SignalFlags::default())
+        .journal_state();
+    match journal {
+        Ok(Some(_)) => return recovery_required("update", managed_providers(&receipt)),
+        Ok(None) => {}
+        Err(error) => {
+            return transaction_error(
+                "update",
+                managed_providers(&receipt),
+                error.exit_code(),
+                error.to_string(),
+            );
+        }
+    }
+    match compare_cli_versions(&receipt.cli_version, env!("CARGO_PKG_VERSION")) {
+        Some(Ordering::Greater) => {
+            let mut envelope = Envelope::failure(
+                Some("update"),
+                OutputStatus::Blocked,
+                CONFLICT_EXIT_CODE,
+                "downgrade_refused",
+                format!(
+                    "installed catalog {} is newer than target {}; v1 refuses downgrades",
+                    receipt.cli_version,
+                    env!("CARGO_PKG_VERSION")
+                ),
+            );
+            envelope.providers = managed_providers(&receipt);
+            return envelope;
+        }
+        Some(Ordering::Equal | Ordering::Less) => {}
+        None => {
+            let mut envelope = Envelope::failure(
+                Some("update"),
+                OutputStatus::Blocked,
+                CONFLICT_EXIT_CODE,
+                "installed_version_invalid",
+                format!(
+                    "receipt CLI version {} is not a strict semantic version",
+                    receipt.cli_version
+                ),
+            );
+            envelope.providers = managed_providers(&receipt);
+            return envelope;
+        }
+    }
     let providers = managed_providers(&receipt);
-    let (roots, current) = match context(&providers, "update") {
-        Ok(context) => context,
-        Err(envelope) => return *envelope,
-    };
     let transition = match prepare_lifecycle_transition(
         catalog,
         &roots,
-        current.as_ref(),
+        Some(&receipt),
         &LifecycleIntent::Install {
             providers: providers.clone(),
         },
@@ -241,6 +288,12 @@ fn run_update(
         roots,
         transition,
     )
+}
+
+fn compare_cli_versions(left: &str, right: &str) -> Option<Ordering> {
+    let left = Version::parse(left).ok()?;
+    let right = Version::parse(right).ok()?;
+    Some(left.cmp_precedence(&right))
 }
 
 fn run_uninstall(
@@ -500,112 +553,33 @@ fn run_adopt(
     }
 }
 
-fn run_status(catalog: &Catalog, command: &str) -> Envelope {
-    let (roots, receipt) = match context(&[], command) {
-        Ok(context) => context,
-        Err(envelope) => return *envelope,
-    };
-    let Some(receipt) = receipt else {
-        let mut envelope = Envelope::new(Some(command));
-        envelope.status = OutputStatus::Noop;
-        envelope.data = json!({
-            "installed": false,
-            "receipt": roots.receipt_path,
-            "catalog_sha256": catalog.manifest().catalog_sha256,
-        });
-        return envelope;
-    };
-    let providers = managed_providers(&receipt);
-    let mut envelope = Envelope::new(Some(command));
-    envelope.providers = providers;
-    envelope.transaction_id.clone_from(&receipt.transaction_id);
-    if receipt.state == ReceiptState::RecoveryRequired {
-        envelope.status = OutputStatus::RecoveryRequired;
-        envelope.exit_code = TRANSACTION_EXIT_CODE;
-        envelope.diagnostics.push(OutputDiagnostic::error(
-            "recovery_required",
-            "the receipt requires recovery",
-            Some("Run recover before another mutation.".to_owned()),
-        ));
-    }
-    envelope.data = json!({
-        "installed": true,
-        "state": receipt.state,
-        "assets": receipt.assets.len(),
-        "receipt": roots.receipt_path,
-        "catalog_sha256": receipt.catalog_sha256,
-    });
-    envelope
-}
-
-fn run_doctor(catalog: &Catalog) -> Envelope {
-    let (roots, receipt) = match context(&[], "doctor") {
-        Ok(context) => context,
-        Err(envelope) => return *envelope,
-    };
-    let engine = TransactionEngine::new(roots.state_directory.clone(), SignalFlags::default());
-    let journal = match engine.journal_state() {
-        Ok(journal) => journal,
-        Err(error) => {
-            return transaction_error("doctor", Vec::new(), error.exit_code(), error.to_string());
-        }
-    };
-    let receipt_requires_recovery = receipt
-        .as_ref()
-        .is_some_and(|receipt| receipt.state == ReceiptState::RecoveryRequired);
-    let healthy = receipt.is_some() && journal.is_none() && !receipt_requires_recovery;
-    let mut envelope = Envelope::new(Some("doctor"));
-    if let Some(receipt) = &receipt {
-        envelope.providers = managed_providers(receipt);
-        envelope.transaction_id.clone_from(&receipt.transaction_id);
-    }
-    if !healthy {
-        envelope.status = if journal.is_some() || receipt_requires_recovery {
-            OutputStatus::RecoveryRequired
-        } else {
-            OutputStatus::Blocked
-        };
-        envelope.exit_code = CONFLICT_EXIT_CODE;
-        envelope.diagnostics.push(OutputDiagnostic::error(
-            if journal.is_some() || receipt_requires_recovery {
-                "recovery_required"
-            } else {
-                "not_installed"
-            },
-            if journal.is_some() || receipt_requires_recovery {
-                "the durable state requires recovery"
-            } else {
-                "no Arthur Workflow receipt exists"
-            },
-            Some(if journal.is_some() || receipt_requires_recovery {
-                "Run recover before another mutation.".to_owned()
-            } else {
-                "Run install with an explicit provider selection.".to_owned()
-            }),
-        ));
-    }
-    envelope.data = json!({
-        "healthy": healthy,
-        "journal_state": journal,
-        "catalog_sha256": catalog.manifest().catalog_sha256,
-    });
-    envelope
-}
-
 fn run_recover(catalog: &Catalog, signals: &SignalFlags) -> Envelope {
-    let (_, current) = match context(&[], "recover") {
-        Ok(context) => context,
-        Err(envelope) => return *envelope,
+    let base = match resolve_roots(&[]) {
+        Ok(roots) => roots,
+        Err(error) => return environment_error("recover", &error),
     };
-    let managed = current.as_ref().map_or_else(Vec::new, managed_providers);
-    let (roots, _) = match context(&ProviderId::ALL, "recover") {
-        Ok(context) => context,
-        Err(envelope) => return *envelope,
+    let receipt = read_receipt(&base, "recover");
+    let managed = receipt
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .map_or_else(Vec::new, managed_providers);
+    let roots = match resolve_roots(&ProviderId::ALL) {
+        Ok(roots) => roots,
+        Err(error) => return environment_error("recover", &error),
     };
+    if let Ok(Some(receipt)) = &receipt
+        && let Err(error) = receipt.validate_roots(&roots)
+    {
+        return receipt_root_mismatch("recover", receipt, error.to_string());
+    }
     let trusted = trusted_roots(&roots);
     let engine = TransactionEngine::new(roots.state_directory.clone(), signals.clone());
     match engine.journal_state() {
         Ok(None) => {
+            if let Err(envelope) = receipt {
+                return *envelope;
+            }
             let mut envelope = Envelope::new(Some("recover"));
             envelope.status = OutputStatus::Noop;
             envelope.providers.clone_from(&managed);
@@ -900,6 +874,18 @@ fn adoption_source_id(destination: &Path, roots: &ResolvedRoots) -> Option<Strin
     })
 }
 
+fn recovery_required(command: &str, providers: Vec<ProviderId>) -> Envelope {
+    let mut envelope = Envelope::failure(
+        Some(command),
+        OutputStatus::RecoveryRequired,
+        TRANSACTION_EXIT_CODE,
+        "recovery_required",
+        "the durable state requires recover before a new update plan",
+    );
+    envelope.providers = providers;
+    envelope
+}
+
 fn context(
     selected: &[ProviderId],
     command: &str,
@@ -912,7 +898,33 @@ fn context(
     }
     let roots = resolve_roots(&required.into_iter().collect::<Vec<_>>())
         .map_err(|error| Box::new(environment_error(command, &error)))?;
+    if let Some(receipt) = &receipt
+        && let Err(error) = receipt.validate_roots(&roots)
+    {
+        return Err(Box::new(receipt_root_mismatch(
+            command,
+            receipt,
+            error.to_string(),
+        )));
+    }
     Ok((roots, receipt))
+}
+
+fn receipt_root_mismatch(command: &str, receipt: &Receipt, message: String) -> Envelope {
+    let mut envelope = Envelope::failure(
+        Some(command),
+        OutputStatus::Blocked,
+        ENVIRONMENT_EXIT_CODE,
+        "root_mismatch",
+        message,
+    );
+    envelope.providers = managed_providers(receipt);
+    if let Some(diagnostic) = envelope.diagnostics.first_mut() {
+        diagnostic.remediation = Some(
+            "Restore HOME and CODEX_HOME to the recorded roots before any mutation.".to_owned(),
+        );
+    }
+    envelope
 }
 
 fn read_receipt(roots: &ResolvedRoots, command: &str) -> CommandResult<Option<Receipt>> {
@@ -1081,8 +1093,8 @@ mod tests {
     use std::ffi::OsStr;
 
     use super::{
-        Presentation, adoption_entries, adoption_source_id, cancelled, environment_error,
-        lifecycle_error, transaction_error, trusted_roots,
+        Presentation, adoption_entries, adoption_source_id, cancelled, compare_cli_versions,
+        environment_error, lifecycle_error, recovery_required, transaction_error, trusted_roots,
     };
     use crate::lifecycle::LifecycleTransition;
     use crate::output::OutputStatus;
@@ -1121,6 +1133,19 @@ mod tests {
     }
 
     #[test]
+    fn cli_version_comparison_uses_cargo_semver_precedence() {
+        assert_eq!(
+            compare_cli_versions("0.2.0-beta.1", "0.2.0"),
+            Some(std::cmp::Ordering::Less)
+        );
+        assert_eq!(
+            compare_cli_versions("0.2.0+local", "0.2.0+release"),
+            Some(std::cmp::Ordering::Equal)
+        );
+        assert_eq!(compare_cli_versions("0.2", "0.2.0"), None);
+    }
+
+    #[test]
     fn command_error_envelopes_keep_closed_statuses_and_path_details() {
         let recovery = transaction_error(
             "install",
@@ -1139,6 +1164,9 @@ mod tests {
         );
         assert_eq!(blocked.status, OutputStatus::Blocked);
         assert_eq!(blocked.providers, vec![ProviderId::Claude]);
+        let recovery = recovery_required("update", vec![ProviderId::Codex]);
+        assert_eq!(recovery.status, OutputStatus::RecoveryRequired);
+        assert_eq!(recovery.providers, vec![ProviderId::Codex]);
 
         let missing = environment_error("status", &ResolveError::MissingHome);
         assert!(missing.diagnostics[0].path_utf8.is_none());
