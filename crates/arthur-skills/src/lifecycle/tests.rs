@@ -1,5 +1,4 @@
 use std::error::Error as _;
-use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use tempfile::tempdir;
@@ -299,22 +298,24 @@ fn transition_requires_every_managed_root_and_preserves_historical_roots() -> Te
 
 #[test]
 fn provider_helpers_reject_missing_claude_skill_roots() {
+    let home = tempdir().unwrap_or_else(|error| panic!("temporary HOME failed: {error}"));
+    let claude_root = home.path().join(".claude");
     let provider = crate::provider::ResolvedProvider {
         id: ProviderId::Claude,
         root: crate::provider::RootIdentity {
-            lexical: PathBuf::from("/tmp/claude"),
-            real: PathBuf::from("/tmp/claude"),
+            lexical: claude_root.clone(),
+            real: claude_root.clone(),
             device: 1,
         },
         skills: None,
-        agents: PathBuf::from("/tmp/claude/agents"),
+        agents: claude_root.join("agents"),
     };
     let catalog = Catalog::load().unwrap_or_else(|error| panic!("catalog fixture failed: {error}"));
     let mut desired = std::collections::BTreeMap::new();
     assert!(
         super::insert_claude_activations(
             &catalog,
-            &resolve_roots_from(Some(OsStr::new("/tmp")), None, &[ProviderId::Claude],)
+            &resolve_roots_from(Some(home.path().as_os_str()), None, &[ProviderId::Claude],)
                 .unwrap_or_else(|error| panic!("root fixture failed: {error}")),
             &provider,
             &mut desired,

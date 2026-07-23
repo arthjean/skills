@@ -956,7 +956,9 @@ mod tests {
     #[test]
     fn asset_destinations_and_symlink_targets_stay_inside_owned_roots() {
         let (_home, roots, receipt) = receipt_fixture(&[ProviderId::Claude]);
-        let outside = file_asset(PathBuf::from("/outside/SKILL.md"));
+        let outside_root =
+            tempdir().unwrap_or_else(|error| panic!("outside root fixture failed: {error}"));
+        let outside = file_asset(outside_root.path().join("SKILL.md"));
         assert_asset_error(
             &receipt,
             outside,
@@ -1000,9 +1002,15 @@ mod tests {
             },
         );
 
+        let filesystem_root = roots
+            .home
+            .lexical
+            .ancestors()
+            .last()
+            .unwrap_or_else(|| panic!("HOME has no filesystem root"));
         let escaping = symlink_asset(
             claude_skills.join("linked"),
-            Some(PathBuf::from("/../../escape")),
+            Some(filesystem_root.join("..").join("escape")),
         );
         assert_asset_error(
             &receipt,
@@ -1015,7 +1023,7 @@ mod tests {
 
         let mismatched = symlink_asset(
             claude_skills.join("linked"),
-            Some(PathBuf::from("/different")),
+            Some(outside_root.path().join("different")),
         );
         assert_asset_error(
             &receipt,
@@ -1052,13 +1060,25 @@ mod tests {
 
     #[test]
     fn path_normalization_handles_relative_parent_and_root_boundaries() {
+        let temporary = tempdir().unwrap_or_else(|error| panic!("path fixture failed: {error}"));
+        let filesystem_root = temporary
+            .path()
+            .ancestors()
+            .last()
+            .unwrap_or_else(|| panic!("temporary path has no filesystem root"));
         assert_eq!(normalize_path(Path::new("relative")), None);
         assert_eq!(
-            normalize_path(Path::new("/one/two/../three")),
-            Some(PathBuf::from("/one/three"))
+            normalize_path(&temporary.path().join("one/two/../three")),
+            Some(temporary.path().join("one/three"))
         );
-        assert_eq!(normalize_path(Path::new("/../../escape")), None);
-        assert_eq!(normalize_path(Path::new("/")), Some(PathBuf::from("/")));
+        assert_eq!(
+            normalize_path(&filesystem_root.join("..").join("escape")),
+            None
+        );
+        assert_eq!(
+            normalize_path(filesystem_root),
+            Some(filesystem_root.to_path_buf())
+        );
     }
 
     #[test]

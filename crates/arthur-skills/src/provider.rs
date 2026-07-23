@@ -590,8 +590,12 @@ mod tests {
                 ..
             })
         ));
+        #[cfg(unix)]
+        let escaping_home = OsStr::new("/../../home");
+        #[cfg(windows)]
+        let escaping_home = OsStr::new(r"C:\..\home");
         assert!(matches!(
-            resolve_roots_from(Some(OsStr::new("/../../home")), None, &[]),
+            resolve_roots_from(Some(escaping_home), None, &[]),
             Err(ResolveError::EscapesFilesystemRoot {
                 variable: "HOME",
                 ..
