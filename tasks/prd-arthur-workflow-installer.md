@@ -21,7 +21,7 @@
 
 Le produit est un CLI Rust 2024 distribué comme binaire natif autonome, avec une interface Ratatui lorsque le terminal est interactif, un renderer ligne à ligne `--plain` et un contrat JSON déterministe pour l'automatisation. Son exécutable est `arthur-skills`; le workspace Cargo vit à la racine et le crate binaire dans `crates/arthur-skills`. La toolchain de référence est Rust 1.95.0, épinglée par `rust-toolchain.toml`.
 
-Le binaire embarque une version immuable du catalogue et un manifeste SHA-256 généré avant compilation. L'installation copie les skills dans la source canonique `$HOME/.agents/skills`. Claude Code reçoit un symlink relatif par skill dans `$HOME/.claude/skills`, tandis que Codex lit directement la source canonique. Cette découverte Codex est intrinsèque: tant que le catalogue canonique existe, choisir ou retirer l'intégration Codex gouverne ses agents, mais ne constitue pas une frontière de visibilité des skills. L'UI doit l'expliquer avant confirmation. Les agents provider-specific sont copiés dans `$HOME/.claude/agents` et `${CODEX_HOME:-$HOME/.codex}/agents`. Les evals de développement ne sont jamais embarquées ni installées.
+Le binaire embarque une version immuable du catalogue et un manifeste SHA-256 généré avant compilation. L'installation copie les skills dans la source canonique `$HOME/.agents/skills`. Claude Code reçoit une activation par skill dans `$HOME/.claude/skills`: symlink relatif sous Unix, copie gérée sous Windows pour fonctionner sans Developer Mode ni privilèges administrateur. Codex lit directement la source canonique. Cette découverte Codex est intrinsèque: tant que le catalogue canonique existe, choisir ou retirer l'intégration Codex gouverne ses agents, mais ne constitue pas une frontière de visibilité des skills. L'UI doit l'expliquer avant confirmation. Les agents provider-specific sont copiés dans `$HOME/.claude/agents` et `${CODEX_HOME:-$HOME/.codex}/agents`. Les evals de développement ne sont jamais embarquées ni installées.
 
 Chaque commande passe par le même moteur: découverte de l'état réel, calcul d'un plan typé, confirmation éventuelle, staging, application transactionnelle, écriture d'un receipt versionné et rollback en cas d'échec. Le CLI ne possède que les chemins enregistrés dans ce receipt. Il ne remplace ni ne supprime un asset étranger. `adopt` permet de transférer explicitement une installation existante après preuve par hash et cible de symlink.
 
@@ -32,7 +32,7 @@ Chaque commande passe par le même moteur: découverte de l'état réel, calcul 
 | Reproduire le catalogue complet | 100% des assets attendus installés dans chaque matrice provider supportée | 100% à chaque release du catalogue |
 | Réduire l'onboarding | Une invocation `arthur-skills` après acquisition du binaire et moins de 3 minutes jusqu'au diagnostic vert | Deux commandes shell maximum depuis une machine vierge, acquisition incluse, au P95 |
 | Garantir la sûreté des mutations | 0 écrasement ou suppression d'asset non possédé dans la suite de fault injection | 0 régression sur toutes les releases |
-| Garantir la récupération | 100% des points de panne simulés restaurent l'état initial ou produisent `RECOVERY_REQUIRED` avec tous les backups | 0 état partiel silencieux sur Linux et macOS supportés |
+| Garantir la récupération | 100% des points de panne simulés restaurent l'état initial ou produisent `RECOVERY_REQUIRED` avec tous les backups | 0 état partiel silencieux sur Linux, macOS et Windows supportés |
 | Rendre l'état explicable | `status --json` et `doctor --json` couvrent 100% des assets gérés | Schéma rétrocompatible sur toute la major v1 |
 
 ## Target Users
@@ -67,7 +67,7 @@ Key findings that informed this PRD:
 
 ### Best Practices Applied
 
-- Utiliser une source canonique et un symlink par skill évite la divergence tout en préservant les assets propres à chaque provider.
+- Utiliser une source canonique avec une activation Claude possédée par skill évite la divergence tout en préservant les assets propres à chaque provider.
 - Emballer le catalogue avec le CLI et vérifier son manifeste avant toute mutation évite l'exécution ou le téléchargement opportuniste de contenu pendant l'installation.
 - [Ratatui 0.30.2](https://docs.rs/ratatui/0.30.2/ratatui/fn.init_with_options.html) fournit `Viewport::Inline`, la restauration du terminal et l'adaptation au resize sans imposer l'alternate screen. Son [TestBackend](https://docs.rs/ratatui/0.30.2/ratatui/backend/struct.TestBackend.html) permet des assertions déterministes sur les buffers rendus.
 - [Clap](https://github.com/clap-rs/clap) fournit sous-commandes et arguments typés, relations entre flags, aide/version générées et validation de la définition par `CommandFactory::debug_assert()`.
@@ -81,25 +81,25 @@ Key findings that informed this PRD:
 
 ### Assumptions (to validate)
 
-- **HIGH, US-001:** Ratatui 0.30.2 avec son backend Crossterm fonctionne en viewport inline sur les terminaux Linux et macOS ciblés, restaure toujours le terminal et partage la même state machine avec le renderer `--plain`.
-- **MEDIUM, US-020:** cargo-dist produit de manière reproductible les quatre cibles natives retenues depuis Rust 1.95.0 et conserve les modes des assets générés.
+- **HIGH, US-001:** Ratatui 0.30.2 avec son backend Crossterm fonctionne en viewport inline sur les terminaux Linux, macOS et Windows ciblés, restaure toujours le terminal et partage la même state machine avec le renderer `--plain`.
+- **MEDIUM, US-020:** cargo-dist produit de manière reproductible les cinq cibles natives retenues depuis Rust 1.95.0 et conserve les permissions applicables des assets générés.
 - **MEDIUM, US-020:** les binaires macOS construits avec `MACOSX_DEPLOYMENT_TARGET=13.0` fonctionnent sur macOS 13 et supérieur sans dépendance dynamique hors bibliothèques système.
 - **MEDIUM, US-003:** remplacer les chemins personnels par `$HOME`, `CODEX_HOME`, des chemins relatifs au skill ou une commande résolue via `PATH` conserve la sémantique du workflow.
 - **MEDIUM, US-009:** une installation Vercel Skills existante peut être adoptée sans ambiguïté à partir de `.skill-lock.json`, des hashes réels et des cibles de symlink.
-- **MEDIUM, US-010:** les symlinks relatifs par skill sont disponibles et stables sur les filesystems Linux et macOS ciblés.
+- **MEDIUM, US-010:** les symlinks relatifs sont stables sur les filesystems Unix ciblés et les copies gérées Windows conservent contenu, ownership et rollback.
 
 ### Hard Constraints
 
 - Le catalogue installé doit conserver les noms de skills, noms d'agents, prompts, permissions et modèles publiés. Aucun modèle ne peut être substitué silencieusement.
 - La source canonique des skills est `$HOME/.agents/skills`; Codex ne reçoit pas un second exemplaire ni un symlink provider inutile.
-- Un provider utilisant la stratégie symlink, Claude Code en v1, reçoit un symlink par skill. Le dossier complet `skills` du provider ne doit jamais être remplacé par un symlink.
+- Claude Code reçoit une activation possédée par skill: symlink relatif sous Unix, copie gérée sous Windows. Le dossier complet `skills` du provider ne doit jamais être remplacé par un symlink ou une copie globale.
 - Le dernier exemplaire canonique possédé ne peut être supprimé que lorsqu'aucun provider sélectionné ne le référence.
 - La sélection provider gouverne les activations et agents gérés, pas l'isolation des skills: tout Codex présent sur la machine peut découvrir `$HOME/.agents/skills` tant que le catalogue canonique existe.
 - Chaque référence interne nécessaire au runtime, notamment `~/.claude/skills/_shared`, doit résoudre vers un asset versionné et embarqué dans le binaire. Une référence manquante bloque la release.
 - Le CLI utilise Rust 1.95.0, edition 2024, Cargo et un `Cargo.lock` versionné. Le crate racine interdit `unsafe`; les lints workspace refusent `unwrap()` et `expect()` en production, sauf dérogation locale avec `#[allow(..., reason = "invariant vérifié à la frontière")]`.
 - Aucun runtime ou gestionnaire de packages JavaScript n'entre dans le build, les tests, l'installation ou l'exécution du CLI.
-- V1 supporte Linux et macOS. Windows est explicitement hors scope.
-- Les artefacts v1 ciblent Linux musl x86_64/ARM64 et macOS 13+ x86_64/ARM64. Tout chemin d'entrée non UTF-8 est refusé avant mutation avec une représentation hexadécimale lossless dans le diagnostic.
+- V1 supporte Linux, macOS et Windows sans exiger de privilèges administrateur.
+- Les artefacts v1 ciblent Linux musl x86_64/ARM64, macOS 13+ x86_64/ARM64 et Windows x86_64 MSVC. Tout chemin d'entrée non UTF-8 est refusé avant mutation avec une représentation hexadécimale lossless dans le diagnostic.
 - Les tests automatisés doivent utiliser un HOME temporaire et ne jamais muter `/home/arthur/.agents`, `/home/arthur/.claude` ou `/home/arthur/.codex`.
 - Le CLI ne doit pas modifier les fichiers globaux `AGENTS.md`, `CLAUDE.md`, `config.toml`, les credentials, sessions, caches ou bases gérées par les providers.
 - Le catalogue complet est installé par défaut. V1 n'offre ni profil réduit ni sélection skill par skill.
@@ -263,7 +263,7 @@ Construire un moteur filesystem unique qui explique chaque changement avant de l
 
 **Acceptance Criteria:**
 
-- [ ] Given une erreur recoverable injectée après n'importe quelle primitive mutante, when le rollback compensatoire termine, then chaque chemin retrouve type, contenu, mode POSIX et cible initiaux et aucun nouveau chemin ne subsiste.
+- [ ] Given une erreur recoverable injectée après n'importe quelle primitive mutante, when le rollback compensatoire termine, then chaque chemin retrouve type, contenu, permissions normalisées et cible initiaux et aucun nouveau chemin ne subsiste.
 - [ ] Given plusieurs racines filesystem partiellement appliquées, when le rollback démarre, then il exécute les inverses dans l'ordre global opposé et `fsync` chaque transition `ROLLING_BACK`.
 - [ ] Given SIGINT ou SIGTERM avant le commit du receipt, when le handler se déclenche, then il pose uniquement un flag atomique sans I/O, allocation ni rollback; à la prochaine borne sûre, la boucle principale bloque toute nouvelle opération, restaure le terminal, termine la compensation et retourne 130 pour SIGINT ou 143 pour SIGTERM.
 - [ ] Given un crash pré-commit, when le prochain lancement inspecte le journal, then les mutations sont bloquées jusqu'à `recover`, qui reprend le rollback depuis la dernière transition durable.
@@ -282,9 +282,9 @@ Construire un moteur filesystem unique qui explique chaque changement avant de l
 **Acceptance Criteria:**
 
 - [ ] Given un `.skill-lock.json` v3 conforme aux fixtures et des assets catalogue égaux en contenu, type, mode et cible, when `adopt` est confirmé, then ces entrées deviennent gérées sans réécriture de leurs assets.
-- [ ] Given des symlinks Claude qui résolvent déjà vers les skills canoniques attendus, when ils sont adoptés, then leurs cibles sont enregistrées et les liens ne sont pas recréés.
+- [ ] Given des activations Claude identiques au format attendu par la plateforme, when elles sont adoptées, then leurs preuves sont enregistrées et les activations ne sont pas recréées.
 - [ ] Given un lock legacy contenant des entrées hors catalogue, when l'adoption commit, then une copie exacte de l'original est archivée et un lock résiduel valide conserve ces seules entrées sous ownership Vercel Skills.
-- [ ] Given l'exclusivité opérationnelle confirmée par l'utilisateur, when `rewriteLegacyLock` est prêt à commit, then inode, taille, mtime et hash sont revalidés immédiatement avant le rename; tout changement observé annule l'adoption et restaure les autres opérations.
+- [ ] Given l'exclusivité opérationnelle confirmée par l'utilisateur, when `rewriteLegacyLock` est prêt à commit, then identité de noeud, taille, mtime et hash sont revalidés immédiatement avant le rename; tout changement observé annule l'adoption et restaure les autres opérations.
 - [ ] Given qu'un gestionnaire externe ne respecte pas le verrou Arthur, when l'adoption est documentée, then v1 expose explicitement la fenêtre TOCTOU résiduelle et ne revendique aucune exclusion atomique face à ce processus.
 - [ ] Given un lock ne pouvant pas être réécrit sans perdre une entrée inconnue, when `adopt` l'analyse, then l'adoption entière échoue avant mutation avec la version ou clé non supportée.
 - [ ] Given un asset catalogue dont le hash, le mode, le type ou la cible diffère, when `adopt` est demandé, then l'adoption entière est bloquée et aucun ownership partiel n'est pris.
@@ -325,11 +325,12 @@ Installer le catalogue canonique et activer Claude Code, Codex ou les deux sans 
 
 **Acceptance Criteria:**
 
-- [ ] Given les racines par défaut et Claude Code sélectionné, when l'installation termine, then chaque `$HOME/.claude/skills/<name>` géré cible exactement `../../.agents/skills/<name>` et résout vers le skill canonique possédé.
+- [ ] Given les racines par défaut et Claude Code sélectionné, when l'installation termine sous Unix, then chaque `$HOME/.claude/skills/<name>` géré cible exactement `../../.agents/skills/<name>` et résout vers le skill canonique possédé.
+- [ ] Given les racines par défaut et Claude Code sélectionné, when l'installation termine sous Windows, then chaque `%USERPROFILE%\.claude\skills\<name>` est une copie gérée byte-identique au skill canonique, sans symlink ni privilège administrateur.
 - [ ] Given les assets support sous `shared/claude/skills/_shared`, when Claude est activé, then chaque fichier est copié et possédé individuellement sous `$HOME/.claude/skills/_shared` sans revendiquer un dossier préexistant.
 - [ ] Given un dossier `_shared` étranger avec des noms distincts, when Claude est activé, then ces fichiers coexistent; un support homonyme identique est `adoptable` et un support homonyme différent bloque la transaction.
 - [ ] Given `$HOME/.claude/skills` contenant des assets personnels de noms différents, when l'activation s'exécute, then le dossier racine reste un vrai dossier et ces assets restent inchangés.
-- [ ] Given un symlink existant qui résout déjà vers la cible canonique mais n'est pas possédé, when `install` l'inspecte, then il est classé `adoptable` et n'est pas recréé automatiquement.
+- [ ] Given une activation existante identique mais non possédée, when `install` l'inspecte, then elle est classée `adoptable` et n'est pas recréée automatiquement.
 - [ ] Given Codex sélectionné, when le plan est calculé, then aucun symlink ou copie de skills n'est prévu sous `${CODEX_HOME:-$HOME/.codex}/skills`.
 - [ ] Given la source canonique valide, when une intégration est enregistrée, then le receipt distingue `managed_integration` de `implicit_skill_visibility` et avertit qu'un Codex installé peut voir les skills même si ses agents ne sont pas sélectionnés.
 - [ ] Given Codex sélectionné, when l'installation termine, then chaque TOML Codex est copié dans `${CODEX_HOME:-$HOME/.codex}/agents/<name>.toml` avec contenu et mode identiques au catalogue.
@@ -347,7 +348,7 @@ Installer le catalogue canonique et activer Claude Code, Codex ou les deux sans 
 
 **Acceptance Criteria:**
 
-- [ ] Given Claude et Codex sélectionnés, when `uninstall --provider claude` commit, then seuls les symlinks skills et agents Claude possédés sont supprimés et les skills canoniques restent référencés par Codex.
+- [ ] Given Claude et Codex sélectionnés, when `uninstall --provider claude` commit, then seules les activations skills et agents Claude possédés sont supprimés et les skills canoniques restent référencés par Codex.
 - [ ] Given des fichiers support Claude possédés, when Claude est désinstallé, then seuls ces fichiers sont retirés et `_shared` n'est supprimé que s'il a été créé par le CLI et reste vide.
 - [ ] Given Claude encore sélectionné, when `uninstall --provider codex` commit, then seuls les agents et métadonnées Codex possédés sont retirés et le résumé rappelle que les skills canoniques restent découvrables par Codex.
 - [ ] Given le dernier provider sélectionné, when `uninstall --all` est confirmé, then les activations et agents sont retirés, les références décrémentées, puis chaque skill canonique possédé et inchangé est supprimé à refcount zéro.
@@ -439,7 +440,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 **Acceptance Criteria:**
 
 - [ ] Given une installation gérée, when `status` s'exécute, then il rapporte version CLI, version catalogue, identités de racines, providers sélectionnés, visibilité Codex implicite et nombres d'assets sains, dérivés, manquants, conflictuels, étrangers ou retenus sans mutation.
-- [ ] Given `doctor`, when le diagnostic s'exécute, then il vérifie receipt, journal, hashes, types, modes POSIX, cibles de symlink, références support, permissions des racines, versions CLI providers et commandes optionnelles activées.
+- [ ] Given `doctor`, when le diagnostic s'exécute, then il vérifie receipt, journal, hashes, types, permissions normalisées, cibles de symlink applicables, références support, permissions des racines, versions CLI providers et commandes optionnelles activées.
 - [ ] Given Claude Code sous 2.1.217, Codex sous 0.144.6 ou un modèle publié non reconnu, when `doctor` le détecte, then le diagnostic est non sain, indique la version validée et ne modifie jamais l'agent.
 - [ ] Given `HOME`, la racine canonique ou `CODEX_HOME` différent du receipt, when `status` ou `doctor` s'exécute, then il rapporte `root_mismatch` et toute commande mutante associée est refusée.
 - [ ] Given un receipt corrompu, futur ou en `RECOVERY_REQUIRED`, when `status` ou `doctor` l'ouvre, then il fournit les diagnostics read-only disponibles et désigne `recover` lorsque cette commande est sûre.
@@ -473,7 +474,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 
 **Acceptance Criteria:**
 
-- [ ] Given Linux et macOS en CI, when la matrice fresh install s'exécute pour Claude seul, Codex seul et les deux, then chaque scénario termine avec `doctor` sain et les comptes du manifeste exacts.
+- [ ] Given Linux, macOS et Windows en CI, when la matrice fresh install s'exécute pour Claude seul, Codex seul et les deux, then chaque scénario termine avec `doctor` sain et les comptes du manifeste exacts.
 - [ ] Given une seconde installation du même catalogue, when elle s'exécute, then le plan contient zéro mutation et aucun mtime d'asset géré ne change.
 - [ ] Given une installation Vercel Skills fixture, when `adopt`, `update` puis `uninstall` s'enchaînent, then le lock legacy est recoverable et aucun asset hors catalogue n'est touché.
 - [ ] Given un lock Vercel mixte, when le cycle d'adoption et désinstallation termine, then les entrées hors catalogue et leur lock résiduel restent valides.
@@ -508,9 +509,9 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 
 **Acceptance Criteria:**
 
-- [ ] Given une release, when cargo-dist construit les artefacts, then il produit archives, checksums et installateur shell pour `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin` et `aarch64-apple-darwin`, avec une baseline macOS 13.0.
+- [ ] Given une release, when cargo-dist construit les artefacts, then il produit archives, checksums, installateur shell et installateur PowerShell pour `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin` et `x86_64-pc-windows-msvc`, avec une baseline macOS 13.0.
 - [ ] Given une archive release, when son contenu est inspecté, then elle inclut le binaire, les licences et les métadonnées requises, sans evals, secrets, chemins absolus ni assets runtime externes au binaire.
-- [ ] Given chacune des quatre archives release, when elle est extraite sur un runner natif ou compatible avec son OS et son architecture, avec un HOME temporaire sans checkout, Rust, Cargo, Bun ou Node dans le `PATH`, then son propre binaire réussit `--help`, `plan --json` et la vérification du catalogue embarqué; aucune cible ne peut être couverte uniquement par le smoke d'une autre archive.
+- [ ] Given chacune des cinq archives release, when elle est extraite sur un runner natif ou compatible avec son OS et son architecture, avec un HOME temporaire sans checkout, Rust, Cargo, Bun ou Node dans le `PATH`, then son propre binaire réussit `--help`, `plan --json` et la vérification du catalogue embarqué; aucune cible ne peut être couverte uniquement par le smoke d'une autre archive.
 - [ ] Given une fixture compilée avec un byte catalogue ou manifeste incohérent, when une commande mutante démarre, then elle échoue avant scan utilisateur avec le code d'intégrité documenté.
 - [ ] Given la publication d'une version, when la CI cargo-dist s'exécute, then elle vérifie archives et checksums, publie le manifeste externe et une attestation de provenance, puis refuse une release sans attestation créée et vérifiable dans ce gate CI.
 - [ ] Given un token GitHub absent, une cible de cross-compilation cassée ou une version/tag incohérent, when la release est demandée, then aucune release partielle ni tag trompeur n'est créé et le blocker exact est retourné.
@@ -523,7 +524,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 - FR-04: L'utilisateur doit pouvoir sélectionner l'intégration Claude Code, Codex ou les deux, avec au moins une intégration lors d'un install; cette sélection ne doit pas être présentée comme une frontière de visibilité des skills Codex.
 - FR-05: Le système doit installer le catalogue complet de skills sans profil réduit ni sélection individuelle.
 - FR-06: Les skills doivent être copiés sous `$HOME/.agents/skills/<name>` comme source canonique unique.
-- FR-07: Claude Code doit recevoir un symlink relatif exact `../../.agents/skills/<name>` par skill sous ses racines par défaut; chaque fichier support est possédé individuellement sous `$HOME/.claude/skills/_shared`, sans ownership automatique du dossier préexistant.
+- FR-07: Claude Code doit recevoir par skill un symlink relatif exact `../../.agents/skills/<name>` sous Unix ou une copie gérée byte-identique sous Windows; chaque fichier support est possédé individuellement sous `$HOME/.claude/skills/_shared`, sans ownership automatique du dossier préexistant.
 - FR-08: Codex doit découvrir directement `$HOME/.agents/skills` sans copie ni symlink dans son propre dossier; cette visibilité existe tant que le canonique est présent, même si l'intégration agents Codex n'est pas sélectionnée.
 - FR-09: Les agents Claude doivent être copiés sous `$HOME/.claude/agents`; les agents Codex sous `${CODEX_HOME:-$HOME/.codex}/agents`.
 - FR-10: Les noms, prompts, permissions et modèles publiés doivent être conservés exactement; une incompatibilité locale produit un diagnostic, jamais une substitution.
@@ -533,7 +534,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 - FR-14: Le plan doit distinguer création, mise à jour, suppression, no-op, adoption possible, dérive, conflit, asset retenu et récupération requise.
 - FR-15: Un receipt sous `$HOME/.agents/.arthur-workflow/receipt.json` doit enregistrer schéma, versions, état, identités lexicales et réelles des racines, providers, visibilité implicite, assets, destinations, hashes, modes et références.
 - FR-16: Le receipt et ses répertoires d'état doivent être créés avec des permissions utilisateur uniquement, soit `0600` pour les fichiers et `0700` pour les dossiers sur les plateformes POSIX.
-- FR-17: `adopt` doit valider le schéma v3 connu, vérifier contenu, mode, type et cible entrée par entrée, archiver le lock original et préserver dans un lock résiduel valide toutes les entrées hors catalogue; inode, taille, mtime et hash sont revalidés immédiatement avant remplacement, sans promettre un CAS atomique face à Vercel Skills.
+- FR-17: `adopt` doit valider le schéma v3 connu, vérifier contenu, mode, type et cible entrée par entrée, archiver le lock original et préserver dans un lock résiduel valide toutes les entrées hors catalogue; identité de noeud, taille, mtime et hash sont revalidés immédiatement avant remplacement, sans promettre un CAS atomique face à Vercel Skills.
 - FR-18: Chaque commande mutante doit prendre un verrou interprocessus avant staging.
 - FR-19: Chaque racine doit utiliser un staging sur son filesystem; un journal durable doit ordonner préparation, application et commit du receipt, puis permettre compensation et `recover` entre racines.
 - FR-20: Le système ne doit jamais écraser, supprimer ou revendiquer automatiquement un chemin préexistant absent du receipt courant; les dossiers partagés préexistants restent non possédés et leurs enfants sont arbitrés fichier par fichier.
@@ -549,7 +550,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 - FR-30: Un pré-scan de `args_os()` doit activer JSON uniquement pour `--json` situé avant le premier `--`; ce mode doit capturer succès, aide, version, conflit de flags et toute erreur Clap dans l'envelope v1 déterministe, sans sortie automatique Clap ni autre octet sur stdout. `command` et `transaction_id` doivent être nullables avant leur résolution ou allocation.
 - FR-31: Le système doit utiliser les codes 0 succès/no-op, 2 usage, 3 conflit/dérive, 4 environnement et 5 transaction, intégrité ou récupération requise.
 - FR-32: L'installateur ne doit exécuter aucun script, binaire ou hook contenu dans un skill ou agent.
-- FR-33: Les chemins issus du catalogue, de l'environnement et du receipt doivent être validés contre traversal, types inattendus et symlink escape; seule la cible Claude exactement égale à un skill canonique possédé peut traverser entre ces deux racines.
+- FR-33: Les chemins issus du catalogue, de l'environnement et du receipt doivent être validés contre traversal, types inattendus et symlink escape; sous Unix, seule la cible Claude exactement égale à un skill canonique possédé peut traverser entre ces deux racines.
 - FR-34: Une seconde application du même catalogue et des mêmes providers doit produire zéro mutation.
 - FR-35: L'absence d'un CLI provider doit être signalée mais ne doit pas empêcher une installation préparatoire si ses racines sont sûres.
 - FR-36: Le binaire distribué doit être autonome et ne doit dépendre ni d'un checkout, ni de Rust/Cargo, ni d'un runtime JavaScript sur la machine utilisateur.
@@ -572,7 +573,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 - **Scalability:** sur la même référence, le planificateur doit traiter 500 skills et 50 agents en moins de 750 ms au P95 et sous 64 MB de RSS.
 - **Reliability:** une seconde installation identique doit produire 0 opération mutante; 100% des points de panne injectés doivent atteindre l'état initial ou `RECOVERY_REQUIRED` avec 100% des backups encore disponibles.
 - **Concurrency:** une seconde commande mutante doit détecter le verrou en moins de 250 ms et réaliser 0 mutation.
-- **Portability:** 100% des scénarios critiques doivent passer sur les quatre cibles release Linux musl et macOS x86_64/ARM64; toute autre plateforme doit être refusée avant mutation.
+- **Portability:** 100% des scénarios critiques doivent passer sur les cinq cibles release Linux musl, macOS x86_64/ARM64 et Windows x86_64 MSVC; toute autre plateforme doit être refusée avant mutation.
 - **Maintainability:** le workspace doit conserver au moins 90% de couverture de régions LLVM mesurée par `cargo llvm-cov`; il doit compiler avec 0 warning, 0 bloc `unsafe` et 0 `unwrap()` ou `expect()` de production hors dérogation locale motivée par un invariant validé.
 - **Artifact size:** chaque archive compressée du binaire release doit rester sous 25 MB pour le catalogue initial.
 - **Compatibility:** les schémas JSON de plan, sortie et receipt doivent rester backward-compatible durant toute la major v1; une version future inconnue doit être refusée sans mutation.
@@ -602,7 +603,7 @@ Fermer le cycle de vie avec une preuve d'état, une réconciliation vers chaque 
 | 19 | Support interne manquant | `_shared` ou autre référence absente du binaire | Compilation ou install bloquée avant copie | "Catalog contains an unresolved internal reference." |
 | 20 | Collision `_shared` | Fichier support homonyme non possédé | Identique adoptable, différent conflictuel, autres fichiers préservés | "Shared support file conflicts with an unmanaged file." |
 | 21 | Terminal trop étroit ou `TERM=dumb` | Largeur insuffisante ou terminal sans capacités | Layout compact ou renderer plain avec toutes les données | "Plain terminal mode enabled." |
-| 22 | Plateforme Windows | Binaire compilé depuis les sources avec `target_os = "windows"` | Stop avant mutation, code 4 | "Windows is not supported in v1." |
+| 22 | Symlink Windows indisponible | Developer Mode désactivé et processus non élevé | Utilise une copie Claude gérée, sans tentative de symlink | "Claude skills use managed copies on Windows." |
 | 23 | Dernier provider et skill dérivé | `uninstall --all` avec modifications locales | Conserve comme `retained_unmanaged`, libère l'ownership actif | "Locally modified asset was retained and is no longer managed." |
 | 24 | Transaction orpheline | Crash précédent avec journal ou backup | Refuse nouvelle mutation et exige `recover` | "An incomplete transaction requires recover before continuing." |
 | 25 | Racine changée | HOME ou CODEX_HOME diffère du receipt | Zéro mutation, retour environnement 4 | "Configured roots differ from the installation receipt." |
@@ -637,7 +638,7 @@ Explicit boundaries, what this version does NOT include:
 - Supporter les dizaines de providers du CLI Vercel Skills. V1 couvre Claude Code et Codex.
 - Distribuer le workflow comme marketplace ou plugin natif Claude/Codex, car cela change les namespaces ou ne couvre pas tous les agents.
 - Proposer des profils, un mode minimal ou une sélection skill par skill.
-- Supporter Windows, junctions ou privilèges administrateur en v1.
+- Utiliser des junctions Windows ou exiger des privilèges administrateur en v1.
 - Utiliser un écran alternatif Ratatui ou construire une application terminal full-screen.
 - Publier un package crates.io en v1; GitHub Releases et l'installateur cargo-dist sont le canal primaire.
 - Introduire Tokio ou un runtime async sans besoin I/O concurrent démontré.
@@ -677,11 +678,11 @@ Explicit boundaries, what this version does NOT include:
 - **Recovery:** comment reprendre après crash sans deviner? Recommandation: journal à états fermés. `recover` rollback toute transaction avant receipt commit; après receipt commit, il termine seulement le cleanup. Une précondition perdue conserve `RECOVERY_REQUIRED` et les backups.
 - **Signals:** que peut faire un handler sans violer les invariants Rust ou filesystem? Recommandation: poser uniquement un `AtomicBool`; la boucle principale restaure Ratatui et exécute la compensation à une borne sûre. SIGKILL est couvert exclusivement par le journal et `recover`.
 - **Argument parsing:** quelle surface garde les huit commandes typées? Recommandation: Clap 4 derive avec structs par sous-commande, `ValueEnum` pour providers, relations de flags déclaratives et un test `CommandFactory::debug_assert()`.
-- **Dependencies:** quelles crates minimales verrouiller? Recommandation: Ratatui 0.30.2 avec Crossterm, Clap 4, `serde`/`serde_json`, `sha2`, `thiserror`, `miette` sans capture de secrets, `fs2` et `signal-hook`; `tempfile`, `assert_cmd`, `insta`, `proptest` et une crate PTY Unix en dev; `cargo-llvm-cov` et `cargo-deny` sont des outils CI épinglés. Aucun Tokio.
+- **Dependencies:** quelles crates minimales verrouiller? Recommandation: Ratatui 0.30.2 avec Crossterm, Clap 4, `serde`/`serde_json`, `sha2`, `thiserror`, `miette` sans capture de secrets, `fs2`, `signal-hook` et `atomicwrites` sous Windows pour le remplacement durable du journal; `tempfile`, `assert_cmd`, `insta`, `proptest` et une crate PTY Unix en dev; `cargo-llvm-cov` et `cargo-deny` sont des outils CI épinglés. Aucun Tokio.
 - **Errors:** comment séparer diagnostics humains et JSON? Recommandation: enums `thiserror` dans le domaine, mapping unique vers codes et diagnostics sérialisables, puis `miette` uniquement dans le renderer humain.
-- **Packaging and trust:** comment distinguer cohérence interne et authenticité? Recommandation: cargo-dist génère quatre archives, checksums et installateur shell depuis `rust-toolchain.toml`; chaque archive passe son smoke sur un runner compatible avec son OS et son architecture, puis GitHub Actions vérifie la provenance. Le CLI offline ne vérifie pas l'attestation et le quickstart épingle un semver exact.
-- **Migration:** comment préserver l'ownership Vercel Skills hors catalogue sans prétendre contrôler son processus? Recommandation: exiger l'exclusivité opérationnelle, parser le schéma v3 couvert, archiver l'original, revalider inode, taille, mtime et hash immédiatement avant rename, puis bloquer `doctor` et toute mutation si un lock concurrent réapparaît. La fenêtre TOCTOU avec un writer non coopératif reste explicitement hors garantie v1.
-- **Root identity:** comment réagir si HOME ou CODEX_HOME change? Recommandation: stocker valeurs lexicales, realpaths et identités de device; refuser les mutations sur mismatch et demander de rétablir l'environnement original avant uninstall ou migration.
+- **Packaging and trust:** comment distinguer cohérence interne et authenticité? Recommandation: cargo-dist génère cinq archives, checksums et installateurs shell et PowerShell depuis `rust-toolchain.toml`; chaque archive passe son smoke sur un runner compatible avec son OS et son architecture, puis GitHub Actions vérifie la provenance. Le CLI offline ne vérifie pas l'attestation et le quickstart épingle un semver exact.
+- **Migration:** comment préserver l'ownership Vercel Skills hors catalogue sans prétendre contrôler son processus? Recommandation: exiger l'exclusivité opérationnelle, parser le schéma v3 couvert, archiver l'original, revalider identité de noeud, taille, mtime et hash immédiatement avant rename, puis bloquer `doctor` et toute mutation si un lock concurrent réapparaît. La fenêtre TOCTOU avec un writer non coopératif reste explicitement hors garantie v1.
+- **Root identity:** comment réagir si HOME ou CODEX_HOME change? Recommandation: stocker valeurs lexicales, realpaths et identité filesystem disponible; refuser les mutations sur mismatch et demander de rétablir l'environnement original avant uninstall ou migration.
 - **Compatibility:** quelles versions provider supporter? Recommandation: Claude Code 2.1.217 et Codex 0.144.6 comme minima initiaux validés, actualisés par release; un provider absent permet la préparation, une version inférieure rend `doctor` non sain.
 - **Security:** où appliquer les frontières? Recommandation: valider catalogue, environnement, receipt et chaque destination avant accès; autoriser uniquement l'arête symlink Claude vers le skill canonique exact; n'utiliser aucune commande shell interpolée.
 - **Testing:** comment garder les preuves ciblées? Recommandation: unités et property tests sur manifeste, plan et journal; intégration en `TempDir` avec environnement injecté par subprocess; `TestBackend` et horloge/événements injectés; golden tests plain/JSON avec assertion zéro ESC; PTY pour raw mode, resize et signaux; SIGKILL à chaque borne durable; devices distincts pour compensation.
@@ -699,7 +700,7 @@ Explicit boundaries, what this version does NOT include:
 | Temps de fresh install | N/A | P95 inférieur à 2 secondes hors téléchargement | Month-1 | Benchmark CI dédié |
 | Adoption de l'installation actuelle | Inspection et migration manuelles | 1 plan, 1 confirmation, 0 réécriture des assets identiques | Month-1 | Fixture `.skill-lock.json` v3 |
 | Stabilité du contrat automate | N/A | 0 rupture JSON dans la major v1 | Month-6 | Fixtures de schéma versionnées |
-| Portabilité | Machine d'Arthur uniquement validée | 100% de la matrice critique verte sur quatre cibles Linux/macOS | Month-6 | CI cargo-dist sur archives natives |
+| Portabilité | Machine d'Arthur uniquement validée | 100% de la matrice critique verte sur cinq cibles Linux, macOS et Windows | Month-6 | CI cargo-dist sur archives natives |
 
 ## Open Questions
 
