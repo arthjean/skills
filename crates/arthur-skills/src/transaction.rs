@@ -430,15 +430,17 @@ impl Operation {
             ));
         }
         if self.kind == OperationKind::WriteReceipt {
+            let private_mode = effective_file_mode(0o600);
             let payload_mode = match &self.payload {
                 OperationPayload::File { mode, .. } => Some(*mode),
                 OperationPayload::Unavailable => self.expected_after.mode,
                 _ => None,
             };
-            if payload_mode != Some(0o600) || self.expected_after.mode != Some(0o600) {
+            if payload_mode != Some(private_mode) || self.expected_after.mode != Some(private_mode)
+            {
                 return Err(TransactionError::InvalidOperation(
                     self.id.clone(),
-                    "receipt files must use mode 0600",
+                    "receipt files must use the platform-private mode",
                 ));
             }
         }
