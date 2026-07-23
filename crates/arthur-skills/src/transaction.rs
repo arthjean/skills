@@ -2451,11 +2451,17 @@ fn metadata_mtime_nanoseconds(_metadata: &fs::Metadata) -> i64 {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(coverage))]
+    use std::env;
     use std::error::Error;
     use std::ffi::OsString;
     use std::fs;
     use std::os::unix::ffi::{OsStrExt, OsStringExt};
     use std::path::{Path, PathBuf};
+    #[cfg(not(coverage))]
+    use std::process::{Command, Stdio};
+    #[cfg(not(coverage))]
+    use std::thread;
     use std::time::{Duration, Instant};
 
     #[cfg(unix)]
@@ -2471,13 +2477,20 @@ mod tests {
         OwnershipProof, PathSnapshot, RootSpec, SIGINT, SIGINT_EXIT_CODE, SIGTERM,
         SIGTERM_EXIT_CODE, SignalFlags, TransactionEngine, TransactionError, TransactionLock,
         TransactionOutcome, apply_operation, ensure_private_directory, metadata_device,
-        receipt_is_committed, snapshot_path, validate_and_sort, validate_journal_paths,
+        path_exists, receipt_is_committed, snapshot_path, validate_and_sort,
+        validate_journal_paths,
     };
 
     type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
     fn root(directory: &TempDir, name: &str) -> TestResult<RootSpec> {
         let path = directory.path().join(name);
+        fs::create_dir_all(&path)?;
+        let device = metadata_device(&fs::metadata(&path)?);
+        Ok(RootSpec::new(name, path, device))
+    }
+
+    fn root_at(path: PathBuf, name: &str) -> TestResult<RootSpec> {
         fs::create_dir_all(&path)?;
         let device = metadata_device(&fs::metadata(&path)?);
         Ok(RootSpec::new(name, path, device))
@@ -2726,6 +2739,254 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recovery_spans_two_filesystems_without_committing_the_receipt() -> TestResult {
+        let local = tempfile::tempdir()?;
+        let shared_memory = tempfile::Builder::new()
+            .prefix("arthur-skills-cross-device-")
+            .tempdir_in("/dev/shm")?;
+        let first = root(&local, "first")?;
+        let second = root_at(shared_memory.path().join("second"), "second")?;
+        let receipt_root = root(&local, "receipt-root")?;
+        assert_ne!(first.device, second.device);
+
+        let engine = engine(&local);
+        let mut journal = prepare_journal(
+            &engine,
+            "cross-device",
+            vec![
+                create_file("first-file", &first, "asset.txt", b"first")?,
+                create_file("second-file", &second, "asset.txt", b"second")?,
+                receipt(&receipt_root, br#"{"state":"committed"}"#)?,
+            ],
+        )?;
+        let first_index = journal
+            .operations
+            .iter()
+            .position(|entry| entry.operation.id == "first-file")
+            .ok_or("first operation is absent")?;
+        let second_index = journal
+            .operations
+            .iter()
+            .position(|entry| entry.operation.id == "second-file")
+            .ok_or("second operation is absent")?;
+        apply_entry(&engine, &mut journal, first_index, JournalState::Applying)?;
+        apply_entry(&engine, &mut journal, second_index, JournalState::Applying)?;
+
+        assert_eq!(
+            engine.recover(&[first.clone(), second.clone(), receipt_root.clone()])?,
+            TransactionOutcome::RecoveredRollback
+        );
+        assert_eq!(
+            snapshot_path(&first.path.join("asset.txt"))?,
+            PathSnapshot::absent()
+        );
+        assert_eq!(
+            snapshot_path(&second.path.join("asset.txt"))?,
+            PathSnapshot::absent()
+        );
+        assert_eq!(
+            snapshot_path(&receipt_root.path.join("receipt.json"))?,
+            PathSnapshot::absent()
+        );
+        assert_eq!(engine.journal_state()?, None);
+        Ok(())
+    }
+
+    #[cfg(not(coverage))]
+    struct PauseAfterMutation {
+        target: usize,
+        seen: usize,
+        marker: PathBuf,
+    }
+
+    #[cfg(not(coverage))]
+    impl FailureInjector for PauseAfterMutation {
+        fn after_mutation(&mut self, _point: &MutationPoint) -> Result<(), String> {
+            self.seen += 1;
+            if self.seen == self.target {
+                fs::write(&self.marker, b"ready").map_err(|error| error.to_string())?;
+                loop {
+                    thread::sleep(Duration::from_secs(60));
+                }
+            }
+            Ok(())
+        }
+    }
+
+    #[cfg(all(unix, not(coverage)))]
+    #[test]
+    fn sigkill_child_transaction() -> TestResult {
+        let Some(base) = env::var_os("ARTHUR_SKILLS_SIGKILL_BASE") else {
+            return Ok(());
+        };
+        let target = env::var("ARTHUR_SKILLS_SIGKILL_TARGET")?.parse::<usize>()?;
+        let base = PathBuf::from(base);
+        let managed = root_at(base.join("managed"), "managed")?;
+        let destination = managed.path.join("asset.txt");
+        let before = snapshot_path(&destination)?;
+        let operations = vec![
+            replace_file("replace", &managed, "asset.txt", before, b"after")?,
+            receipt(&managed, br#"{"state":"committed"}"#)?,
+        ];
+        let engine = TransactionEngine::new(base.join("state"), SignalFlags::default());
+        let mut injector = PauseAfterMutation {
+            target,
+            seen: 0,
+            marker: base.join("pause-ready"),
+        };
+        let _ = engine.apply_with(format!("sigkill-{target}"), operations, &mut injector);
+        Err("SIGKILL fixture reached the end without pausing".into())
+    }
+
+    #[cfg(all(unix, not(coverage)))]
+    #[test]
+    fn sigkill_at_each_mutation_recovers_without_signal_cleanup() -> TestResult {
+        for target in 1..=8 {
+            let directory = tempfile::tempdir()?;
+            let managed = root_at(directory.path().join("managed"), "managed")?;
+            let destination = managed.path.join("asset.txt");
+            fs::write(&destination, b"before")?;
+            fs::set_permissions(&destination, fs::Permissions::from_mode(0o644))?;
+            let before = snapshot_path(&destination)?;
+            let marker = directory.path().join("pause-ready");
+            let mut child = Command::new(env::current_exe()?)
+                .args([
+                    "--exact",
+                    "transaction::tests::sigkill_child_transaction",
+                    "--nocapture",
+                ])
+                .env("ARTHUR_SKILLS_SIGKILL_BASE", directory.path())
+                .env("ARTHUR_SKILLS_SIGKILL_TARGET", target.to_string())
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !marker.exists() {
+                if let Some(status) = child.try_wait()? {
+                    return Err(format!(
+                        "SIGKILL fixture exited at mutation {target} with {status}"
+                    )
+                    .into());
+                }
+                if Instant::now() >= deadline {
+                    child.kill()?;
+                    let _ = child.wait();
+                    return Err(format!("SIGKILL fixture did not reach mutation {target}").into());
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+
+            let engine =
+                TransactionEngine::new(directory.path().join("state"), SignalFlags::default());
+            if target == 1 {
+                let contender = engine.apply(
+                    "contender",
+                    vec![
+                        replace_file(
+                            "replace",
+                            &managed,
+                            "asset.txt",
+                            before.clone(),
+                            b"contender",
+                        )?,
+                        receipt(&managed, br#"{"state":"contender"}"#)?,
+                    ],
+                );
+                assert!(matches!(contender, Err(TransactionError::LockBusy)));
+                assert_eq!(snapshot_path(&destination)?, before);
+            }
+            child.kill()?;
+            let status = child.wait()?;
+            assert!(!status.success());
+            assert!(engine.journal_state()?.is_some());
+
+            let outcome = engine.recover(std::slice::from_ref(&managed))?;
+            match outcome {
+                TransactionOutcome::RecoveredRollback => {
+                    assert_eq!(snapshot_path(&destination)?, before);
+                    assert_eq!(
+                        snapshot_path(&managed.path.join("receipt.json"))?,
+                        PathSnapshot::absent()
+                    );
+                }
+                TransactionOutcome::RecoveredCleanup => {
+                    assert_eq!(fs::read(&destination)?, b"after");
+                    assert!(managed.path.join("receipt.json").exists());
+                }
+                TransactionOutcome::Committed => {
+                    return Err("recover reported a new commit after SIGKILL".into());
+                }
+            }
+            assert_eq!(engine.journal_state()?, None);
+        }
+        Ok(())
+    }
+
+    struct FailThenInterruptRollback {
+        target: usize,
+        seen: usize,
+        failed: bool,
+        interrupted_rollback: bool,
+        flags: SignalFlags,
+    }
+
+    impl FailureInjector for FailThenInterruptRollback {
+        fn after_mutation(&mut self, _point: &MutationPoint) -> Result<(), String> {
+            self.seen += 1;
+            if !self.failed && self.seen == self.target {
+                self.failed = true;
+                return Err("begin rollback".to_owned());
+            }
+            if self.failed && !self.interrupted_rollback {
+                self.flags.record_for_test(SIGINT);
+                self.flags.record_for_test(SIGINT);
+                self.interrupted_rollback = true;
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn repeated_interrupt_during_rollback_never_short_circuits_compensation() -> TestResult {
+        let directory = tempfile::tempdir()?;
+        let managed = root(&directory, "managed")?;
+        let destination = managed.path.join("asset.txt");
+        fs::write(&destination, b"before")?;
+        fs::set_permissions(&destination, fs::Permissions::from_mode(0o644))?;
+        let before = snapshot_path(&destination)?;
+        let flags = SignalFlags::default();
+        let engine = TransactionEngine::new(directory.path().join("state"), flags.clone());
+        let mut injector = FailThenInterruptRollback {
+            target: 8,
+            seen: 0,
+            failed: false,
+            interrupted_rollback: false,
+            flags: flags.clone(),
+        };
+
+        let result = engine.apply_with(
+            "repeated-interrupt",
+            vec![
+                replace_file("replace", &managed, "asset.txt", before.clone(), b"after")?,
+                receipt(&managed, br#"{"state":"committed"}"#)?,
+            ],
+            &mut injector,
+        );
+        assert!(matches!(result, Err(TransactionError::InjectedFailure(_))));
+        assert!(injector.interrupted_rollback);
+        assert_eq!(flags.pending_exit_code(), Some(SIGINT_EXIT_CODE));
+        assert_eq!(snapshot_path(&destination)?, before);
+        assert_eq!(
+            snapshot_path(&managed.path.join("receipt.json"))?,
+            PathSnapshot::absent()
+        );
+        assert_eq!(engine.journal_state()?, None);
+        Ok(())
+    }
+
     #[test]
     fn recover_rolls_back_before_receipt_commit() -> TestResult {
         let directory = tempfile::tempdir()?;
@@ -2888,7 +3149,7 @@ mod tests {
     }
 
     #[test]
-    fn recovery_requires_current_root_authority() -> TestResult {
+    fn recovery_requires_current_root_authority_before_discarding_temporary_state() -> TestResult {
         let directory = tempfile::tempdir()?;
         let managed = root(&directory, "managed")?;
         let engine = engine(&directory);
@@ -2900,13 +3161,23 @@ mod tests {
                 receipt(&managed, br#"{"state":"committed"}"#)?,
             ],
         )?;
+        let temporary = engine.journal_temporary_path();
+        super::write_new_durable_file(&temporary, b"newer incomplete boundary", 0o600)?;
 
         assert!(matches!(
             engine.recover(&[]),
             Err(TransactionError::Journal(_))
         ));
-        engine.cleanup(&journal)?;
-        engine.remove_journal()?;
+        assert_eq!(fs::read(&temporary)?, b"newer incomplete boundary");
+        assert_eq!(
+            engine.recover(std::slice::from_ref(&managed))?,
+            TransactionOutcome::RecoveredRollback
+        );
+        assert!(!path_exists(&temporary)?);
+        assert!(!path_exists(&engine.journal_path())?);
+        for staging_root in journal.staging_roots.values() {
+            assert!(!path_exists(staging_root)?);
+        }
         Ok(())
     }
 

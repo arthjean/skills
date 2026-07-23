@@ -15,6 +15,7 @@ fn run(home: &std::path::Path, arguments: &[&str]) -> Result<Output, std::io::Er
     Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
         .args(arguments)
         .env("HOME", home)
+        .env("PATH", home.join(".arthur-empty-path"))
         .env_remove("CODEX_HOME")
         .env_remove("ARTHUR_SKILLS_PLAIN")
         .env_remove("NO_COLOR")
@@ -352,7 +353,6 @@ fn process_lifecycle_preserves_explicit_uninstall_scope() -> TestResult {
     for arguments in [
         vec!["--json", "plan", "--provider", "claude"],
         vec!["--json", "install", "--provider", "claude", "--dry-run"],
-        vec!["--json", "update", "--dry-run"],
         vec!["--json", "uninstall", "--all", "--dry-run"],
         vec!["--json", "adopt", "--provider", "claude", "--dry-run"],
     ] {
@@ -360,6 +360,9 @@ fn process_lifecycle_preserves_explicit_uninstall_scope() -> TestResult {
         assert_eq!(output.status.code(), Some(3), "{arguments:?}");
         assert_eq!(json_output(&output)?["status"], "blocked");
     }
+    let update = run(home.path(), &["--json", "update", "--dry-run"])?;
+    assert_eq!(update.status.code(), Some(5));
+    assert_eq!(json_output(&update)?["status"], "recovery_required");
     fs::write(&receipt_path, committed_receipt)?;
 
     let missing_scope = run(home.path(), &["--json", "uninstall", "--yes"])?;
@@ -440,6 +443,7 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
         home.path()
             .join(".agents/.arthur-workflow/pre-adoption-receipt.json"),
     )?;
+    fs::remove_dir_all(home.path().join(".claude/agents"))?;
 
     let missing_lock = run(
         home.path(),
@@ -460,6 +464,30 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
     assert_eq!(json_output(&blocked)?["status"], "blocked");
 
     write_v3_lock_for_installed_skills(home.path())?;
+    let foreign_asset = home.path().join(".agents/skills/personal/SKILL.md");
+    fs::create_dir_all(
+        foreign_asset
+            .parent()
+            .ok_or("foreign asset has no parent")?,
+    )?;
+    fs::write(&foreign_asset, b"personal skill")?;
+    let lock_path = home.path().join(".agents/.skill-lock.json");
+    let mut mixed_lock = serde_json::from_slice::<Value>(&fs::read(&lock_path)?)?;
+    mixed_lock["skills"]
+        .as_object_mut()
+        .ok_or("legacy skills are not an object")?
+        .insert(
+            "personal".to_owned(),
+            serde_json::json!({
+                "source": "personal",
+                "sourceType": "github",
+                "skillFolderHash": "fedcba9876543210fedcba9876543210fedcba98",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            }),
+        );
+    let original_lock = serde_json::to_vec_pretty(&mixed_lock)?;
+    fs::write(&lock_path, &original_lock)?;
 
     let dry_run = run(
         home.path(),
@@ -473,6 +501,34 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
     let envelope = json_output(&dry_run)?;
     assert_eq!(envelope["status"], "success");
     assert_eq!(envelope["data"]["applied"], false);
+    let human_dry_run = run(
+        home.path(),
+        &["--plain", "adopt", "--provider", "claude", "--dry-run"],
+    )?;
+    assert_eq!(human_dry_run.status.code(), dry_run.status.code());
+    let human_dry_run = String::from_utf8(human_dry_run.stdout)?;
+    for (action, count) in envelope["summary"]
+        .as_object()
+        .ok_or("adoption summary is not an object")?
+    {
+        assert!(human_dry_run.contains(&format!("{action}: {count}")));
+    }
+    for operation in envelope["operations"]
+        .as_array()
+        .ok_or("adoption operations are not an array")?
+    {
+        let destination = operation["destination_utf8"]
+            .as_str()
+            .ok_or("adoption destination is absent")?;
+        let reason = operation["reason"]
+            .as_str()
+            .ok_or("adoption reason is absent")?;
+        assert!(
+            human_dry_run
+                .lines()
+                .any(|line| line.contains(destination) && line.contains(reason))
+        );
+    }
 
     let missing_confirmation = run(home.path(), &["--json", "adopt", "--provider", "claude"])?;
     assert_eq!(missing_confirmation.status.code(), Some(2));
@@ -498,6 +554,30 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
             .join(".agents/.arthur-workflow/vercel-skills-v3-lock.json")
             .exists()
     );
+    let archive = home
+        .path()
+        .join(".agents/.arthur-workflow/vercel-skills-v3-lock.json");
+    assert_eq!(fs::read(&archive)?, original_lock);
+    let residual = serde_json::from_slice::<Value>(&fs::read(&lock_path)?)?;
+    assert_eq!(residual["version"], 3);
+    assert_eq!(
+        residual["skills"].as_object().map(serde_json::Map::len),
+        Some(1)
+    );
+    assert_eq!(residual["skills"]["personal"]["source"], "personal");
+
+    let update = run(home.path(), &["--json", "update", "--yes"])?;
+    assert!(
+        update.status.success(),
+        "{}",
+        String::from_utf8_lossy(&update.stdout)
+    );
+    let uninstall = run(home.path(), &["--json", "uninstall", "--all", "--yes"])?;
+    assert!(uninstall.status.success());
+    assert_eq!(fs::read(&foreign_asset)?, b"personal skill");
+    assert_eq!(fs::read(&archive)?, original_lock);
+    let residual_after = serde_json::from_slice::<Value>(&fs::read(&lock_path)?)?;
+    assert_eq!(residual_after["skills"]["personal"]["source"], "personal");
     Ok(())
 }
 
