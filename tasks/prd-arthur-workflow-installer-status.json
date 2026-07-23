@@ -41,10 +41,10 @@
     {
       "id": "EP-005",
       "title": "Diagnostic, mise à jour et release",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "stories_total": 5,
-      "stories_done": 0
+      "stories_done": 2
     }
   ],
   "stories": [
@@ -232,61 +232,61 @@
       "id": "US-016",
       "title": "Diagnostiquer l'état installé",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-010", "US-011", "US-012", "US-013"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T18:24:24Z",
+      "completed_at": "2026-07-22T19:29:10Z",
+      "reviewed_at": "2026-07-23T07:17:00Z"
     },
     {
       "id": "US-017",
       "title": "Réconcilier vers le catalogue embarqué",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "DONE",
       "priority": "P0",
       "size": "M",
       "blocked_by": ["US-012", "US-016"],
-      "started_at": null,
-      "completed_at": null,
-      "reviewed_at": null
+      "started_at": "2026-07-22T18:30:32Z",
+      "completed_at": "2026-07-22T19:29:10Z",
+      "reviewed_at": "2026-07-23T07:17:00Z"
     },
     {
       "id": "US-018",
       "title": "Prouver le cycle de vie filesystem de bout en bout",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-009", "US-012", "US-013", "US-016", "US-017"],
-      "started_at": null,
+      "started_at": "2026-07-22T18:34:13Z",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-07-23T07:17:00Z"
     },
     {
       "id": "US-019",
       "title": "Prouver récupération, concurrence et portabilité",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-008", "US-013", "US-015", "US-018"],
-      "started_at": null,
+      "started_at": "2026-07-22T18:34:13Z",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-07-23T07:17:00Z"
     },
     {
       "id": "US-020",
       "title": "Construire et publier les binaires natifs",
       "epic": "EP-005",
-      "status": "TODO",
+      "status": "IN_REVIEW",
       "priority": "P0",
       "size": "L",
       "blocked_by": ["US-001", "US-002", "US-003", "US-004", "US-015", "US-018", "US-019"],
-      "started_at": null,
+      "started_at": "2026-07-22T18:36:19Z",
       "completed_at": null,
-      "reviewed_at": null
+      "reviewed_at": "2026-07-23T07:17:00Z"
     }
   ]
 }
