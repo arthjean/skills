@@ -999,8 +999,20 @@ fn normalize_absolute(path: &Path) -> Option<PathBuf> {
     normalize_platform_path(path)
 }
 
+#[cfg(not(windows))]
 fn path_key(path: &Path) -> Vec<u8> {
     os_path_key(path.as_os_str())
+}
+
+#[cfg(windows)]
+fn path_key(path: &Path) -> Vec<u8> {
+    let mut key = Vec::new();
+    for component in path.components() {
+        let bytes = os_path_key(component.as_os_str());
+        key.extend_from_slice(&bytes.len().to_le_bytes());
+        key.extend_from_slice(&bytes);
+    }
+    key
 }
 
 fn sha256(bytes: &[u8]) -> String {
