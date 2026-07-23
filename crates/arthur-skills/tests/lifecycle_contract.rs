@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -404,6 +405,7 @@ fn retained_unmanaged_receipt_records_fail_closed() -> TestResult {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn non_utf8_foreign_entry_blocks_uninstall_before_mutation() -> TestResult {
     let home = tempfile::tempdir()?;
