@@ -8,12 +8,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use semver::Version;
 use serde_json::json;
 
-use crate::adoption::{self, CatalogEntry, EntryType};
+use crate::adoption::{self, CatalogEntry, EntryType, LegacyImportPlan};
 use crate::app::{App, Review};
-use crate::catalog::Catalog;
+use crate::catalog::{AssetKind, Catalog};
 use crate::cli::{Cli, Command, ConfirmationArgs, MutationArgs, ProviderArgs, UninstallArgs};
-use crate::lifecycle::{LifecycleIntent, LifecycleTransition, prepare_lifecycle_transition};
-use crate::operations::{operations_for_adoption, operations_for_plan};
+use crate::lifecycle::{
+    LifecycleIntent, LifecycleTransition, prepare_import_transition, prepare_lifecycle_transition,
+    prepare_reconciliation_transition,
+};
+use crate::operations::{operations_for_adoption, operations_for_import, operations_for_plan};
 use crate::output::{
     CONFLICT_EXIT_CODE, Envelope, OutputDiagnostic, OutputSeverity, OutputStatus, path_fields,
 };
@@ -28,6 +31,7 @@ use crate::transaction::{
     snapshot_path,
 };
 use crate::ui::{self, UiExit};
+use crate::workflow::{WorkflowAssessment, WorkflowState, assess};
 use crate::{engine, plan};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,6 +50,8 @@ struct ApplyRequest<'a> {
     confirmation: &'a ConfirmationArgs,
     presentation: Presentation,
     signals: &'a SignalFlags,
+    assessment: Option<&'a WorkflowAssessment>,
+    legacy_import: Option<&'a LegacyImportPlan>,
 }
 
 pub fn execute(cli: &Cli) -> Envelope {
@@ -170,7 +176,7 @@ fn run_install(
         Ok(context) => context,
         Err(envelope) => return *envelope,
     };
-    let transition = match prepare_lifecycle_transition(
+    let initial_transition = match prepare_lifecycle_transition(
         catalog,
         &roots,
         current.as_ref(),
@@ -181,6 +187,52 @@ fn run_install(
         Ok(transition) => transition,
         Err(error) => return lifecycle_error("install", providers, error.to_string()),
     };
+    let interactive_workflow =
+        presentation != Presentation::NonInteractive && !arguments.confirmation.dry_run;
+    let legacy_import = if interactive_workflow && current.is_none() {
+        let lock_path = roots.canonical.lexical.join(".skill-lock.json");
+        let archive_path = roots.state_directory.join("vercel-skills-v3-lock.json");
+        match adoption::inspect_legacy_import(
+            &lock_path,
+            &archive_path,
+            &catalog_skill_names(catalog),
+        ) {
+            Ok(legacy) => legacy,
+            Err(error) => return lifecycle_error("install", providers, error.to_string()),
+        }
+    } else {
+        None
+    };
+    let assessment = interactive_workflow.then(|| {
+        assess(
+            current.as_ref(),
+            &initial_transition.plan,
+            legacy_import
+                .as_ref()
+                .map_or(0, |legacy| legacy.managed_skill_names.len()),
+            legacy_import
+                .as_ref()
+                .map_or(0, |legacy| legacy.obsolete_skill_names.len()),
+        )
+    });
+    let transition = match assessment.as_ref().map(|value| value.state) {
+        Some(WorkflowState::Import) => {
+            match prepare_import_transition(catalog, &roots, &providers, legacy_import.as_ref()) {
+                Ok(transition) => transition,
+                Err(error) => return lifecycle_error("install", providers, error.to_string()),
+            }
+        }
+        Some(WorkflowState::Update) => match current.as_ref() {
+            Some(receipt) => {
+                match prepare_reconciliation_transition(catalog, &roots, receipt, &providers) {
+                    Ok(transition) => transition,
+                    Err(error) => return lifecycle_error("install", providers, error.to_string()),
+                }
+            }
+            None => initial_transition,
+        },
+        _ => initial_transition,
+    };
     apply_transition(
         ApplyRequest {
             catalog,
@@ -189,6 +241,8 @@ fn run_install(
             confirmation: &arguments.confirmation,
             presentation,
             signals,
+            assessment: assessment.as_ref(),
+            legacy_import: legacy_import.as_ref(),
         },
         roots,
         transition,
@@ -265,7 +319,7 @@ fn run_update(
         }
     }
     let providers = managed_providers(&receipt);
-    let transition = match prepare_lifecycle_transition(
+    let initial_transition = match prepare_lifecycle_transition(
         catalog,
         &roots,
         Some(&receipt),
@@ -273,6 +327,12 @@ fn run_update(
             providers: providers.clone(),
         },
     ) {
+        Ok(transition) => transition,
+        Err(error) => return lifecycle_error("update", providers, error.to_string()),
+    };
+    let assessment = assess(Some(&receipt), &initial_transition.plan, 0, 0);
+    let transition = match prepare_reconciliation_transition(catalog, &roots, &receipt, &providers)
+    {
         Ok(transition) => transition,
         Err(error) => return lifecycle_error("update", providers, error.to_string()),
     };
@@ -284,6 +344,8 @@ fn run_update(
             confirmation,
             presentation,
             signals,
+            assessment: Some(&assessment),
+            legacy_import: None,
         },
         roots,
         transition,
@@ -356,6 +418,8 @@ fn run_uninstall(
             confirmation: &arguments.confirmation,
             presentation,
             signals,
+            assessment: None,
+            legacy_import: None,
         },
         roots,
         transition,
@@ -617,19 +681,25 @@ fn apply_transition(
         confirmation,
         presentation,
         signals,
+        assessment,
+        legacy_import,
     } = request;
     let mut envelope = report_transition(command, transition.clone());
-    if confirmation.dry_run || !transition.plan.applicable {
+    if confirmation.dry_run {
         return envelope;
     }
-    if transition
+    let already_current = transition
         .plan
         .entries
         .iter()
-        .all(|entry| entry.action == plan::PlanAction::Noop)
-    {
+        .all(|entry| entry.action == plan::PlanAction::Noop);
+    if already_current && (assessment.is_none() || presentation == Presentation::NonInteractive) {
         envelope.status = OutputStatus::Noop;
-        envelope.data = json!({ "applied": false, "result": "already_current" });
+        envelope.data = json!({
+            "applied": false,
+            "result": "already_current",
+            "message": "Everything is up to date. You can close Arthur Workflow."
+        });
         return envelope;
     }
     if !confirmation.yes {
@@ -640,11 +710,15 @@ fn apply_transition(
             );
         }
         let mut app = App::with_selection(catalog.skill_count(), &transition.selected_providers);
-        app.set_review(Review::from_plan(
-            &transition.plan,
-            &transition.notices,
-            &roots,
-        ));
+        app.set_review(match assessment {
+            Some(assessment) => Review::for_workflow(
+                &transition.plan,
+                &transition.notices,
+                &roots,
+                assessment.clone(),
+            ),
+            None => Review::from_plan(&transition.plan, &transition.notices, &roots),
+        });
         let decision = match presentation {
             Presentation::Tui => ui::confirm_plan(app, signals).map(|exit| match exit {
                 UiExit::Confirmed => PlainExit::Confirmed,
@@ -684,6 +758,18 @@ fn apply_transition(
             }
         }
     }
+    if !transition.plan.applicable {
+        return envelope;
+    }
+    if already_current {
+        envelope.status = OutputStatus::Noop;
+        envelope.data = json!({
+            "applied": false,
+            "result": "already_current",
+            "message": "Everything is up to date. You can close Arthur Workflow."
+        });
+        return envelope;
+    }
 
     let transaction_id = match transaction_id() {
         Ok(id) => id,
@@ -696,12 +782,23 @@ fn apply_transition(
             );
         }
     };
-    let operations = match operations_for_plan(
-        &transition.plan,
-        &roots,
-        &transition.receipt,
-        &transaction_id,
-    ) {
+    let operations_result = match assessment.map(|value| value.state) {
+        Some(WorkflowState::Import) => operations_for_import(
+            &transition.plan,
+            &roots.canonical.lexical.join(".skill-lock.json"),
+            legacy_import,
+            &roots,
+            &transition.receipt,
+            &transaction_id,
+        ),
+        _ => operations_for_plan(
+            &transition.plan,
+            &roots,
+            &transition.receipt,
+            &transaction_id,
+        ),
+    };
+    let operations = match operations_result {
         Ok(operations) => operations,
         Err(error) => {
             return transaction_error(
@@ -764,10 +861,7 @@ fn providers_or_interactive(
             "provider selection is required; pass --provider <claude|codex>",
         )));
     }
-    let detected = context(&[], command)
-        .ok()
-        .and_then(|(_, receipt)| receipt)
-        .map_or_else(Vec::new, |receipt| managed_providers(&receipt));
+    let detected = crate::health::detected_providers();
     let app = App::new(catalog.skill_count(), &detected);
     match presentation {
         Presentation::Tui => match ui::select_providers(app, signals) {
@@ -953,6 +1047,16 @@ fn managed_providers(receipt: &Receipt) -> Vec<ProviderId> {
         .iter()
         .filter(|provider| provider.managed_integration)
         .map(|provider| provider.provider)
+        .collect()
+}
+
+fn catalog_skill_names(catalog: &Catalog) -> BTreeSet<String> {
+    catalog
+        .manifest()
+        .assets
+        .iter()
+        .filter(|asset| asset.kind == AssetKind::Skill)
+        .map(|asset| asset.name.clone())
         .collect()
 }
 

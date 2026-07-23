@@ -70,7 +70,7 @@ fn plain_install_covers_selection_validation_review_and_confirmation() -> Result
     )?;
     assert_eq!(result.initial_flags, result.final_flags);
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.output.contains("Apply this complete plan?"));
+    assert!(result.output.contains("Proceed with install?"));
     assert!(!cancelled_review.path().join(".agents").exists());
 
     let confirmed = tempfile::tempdir()?;
@@ -84,10 +84,13 @@ fn plain_install_covers_selection_validation_review_and_confirmation() -> Result
             .exists()
     );
 
-    let uninstall =
-        run_install_session(confirmed.path(), &["uninstall"], Interaction::Plain(b"n\n"))?;
+    let uninstall = run_install_session(
+        confirmed.path(),
+        &["uninstall", "--all"],
+        Interaction::Plain(b"n\n"),
+    )?;
     assert_eq!(uninstall.exit_code, Some(0));
-    assert!(uninstall.output.contains("Apply this complete plan?"));
+    assert!(uninstall.output.contains("Plan review"));
     assert!(
         confirmed
             .path()
@@ -104,7 +107,7 @@ fn tui_install_selects_reviews_and_commits_inline() -> Result<(), Box<dyn Error>
     assert_eq!(result.initial_flags, result.final_flags);
     assert_eq!(result.exit_code, Some(0));
     assert!(result.output.contains("Select providers"));
-    assert!(result.output.contains("Review filesystem plan"));
+    assert!(result.output.contains("Install Arthur Workflow"));
     assert!(!result.output.contains("\u{1b}[?1049h"));
     assert!(
         home.path()
@@ -120,7 +123,7 @@ fn tui_interrupt_during_review_exits_before_mutation() -> Result<(), Box<dyn Err
     let result = run_install_session(home.path(), &["install"], Interaction::TuiInterruptReview)?;
     assert_eq!(result.initial_flags, result.final_flags);
     assert_eq!(result.exit_code, Some(130));
-    assert!(result.output.contains("Review filesystem plan"));
+    assert!(result.output.contains("Install Arthur Workflow"));
     assert!(!home.path().join(".agents").exists());
     Ok(())
 }
@@ -136,7 +139,7 @@ fn plain_adoption_reviews_and_commits_verified_entries() -> Result<(), Box<dyn E
     )?;
     assert_eq!(result.initial_flags, result.final_flags);
     assert_eq!(result.exit_code, Some(0));
-    assert!(result.output.contains("Apply this complete plan?"));
+    assert!(result.output.contains("Proceed with apply?"));
     assert!(
         home.path()
             .join(".agents/.arthur-workflow/receipt.json")
@@ -202,6 +205,92 @@ fn tui_adoption_can_cancel_then_confirm_the_same_verified_plan() -> Result<(), B
             .join(".agents/.arthur-workflow/receipt.json")
             .exists()
     );
+    Ok(())
+}
+
+#[test]
+fn real_cli_imports_updates_and_reports_an_aligned_configuration() -> Result<(), Box<dyn Error>> {
+    let home = tempfile::tempdir()?;
+    let install = Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
+        .args(["--json", "install", "--provider", "claude,codex", "--yes"])
+        .env("HOME", home.path())
+        .env_remove("CODEX_HOME")
+        .output()?;
+    assert!(
+        install.status.success(),
+        "{}",
+        String::from_utf8_lossy(&install.stdout)
+    );
+    fs::remove_file(home.path().join(".agents/.arthur-workflow/receipt.json"))?;
+    fs::write(
+        home.path().join(".agents/skills/baseline-ui/SKILL.md"),
+        b"old catalog content",
+    )?;
+    let obsolete = home
+        .path()
+        .join(".agents/skills/obsolete-arthur-skill/SKILL.md");
+    fs::create_dir_all(obsolete.parent().ok_or("obsolete skill has no parent")?)?;
+    fs::write(&obsolete, b"obsolete")?;
+    let personal = home.path().join(".agents/skills/personal/SKILL.md");
+    fs::create_dir_all(personal.parent().ok_or("personal skill has no parent")?)?;
+    fs::write(&personal, b"personal")?;
+    fs::write(
+        home.path().join(".agents/.skill-lock.json"),
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "version": 3,
+            "skills": {
+                "obsolete-arthur-skill": {
+                    "source": "arthjean/skills",
+                    "sourceType": "github",
+                    "skillFolderHash": "0123456789012345678901234567890123456789",
+                    "installedAt": "2026-01-01T00:00:00.000Z",
+                    "updatedAt": "2026-01-01T00:00:00.000Z"
+                },
+                "personal": {
+                    "source": "someone/personal-skills",
+                    "sourceType": "github",
+                    "skillFolderHash": "fedcba9876543210fedcba9876543210fedcba98",
+                    "installedAt": "2026-01-01T00:00:00.000Z",
+                    "updatedAt": "2026-01-01T00:00:00.000Z"
+                }
+            }
+        }))?,
+    )?;
+
+    let imported = run_install_session(home.path(), &[], Interaction::Plain(b"\ny\n"))?;
+    assert_eq!(imported.exit_code, Some(0));
+    assert!(imported.output.contains("Import existing configuration"));
+    assert!(
+        imported
+            .output
+            .contains("Proceed with import and clean up?")
+    );
+    assert!(!obsolete.exists());
+    assert_eq!(fs::read(&personal)?, b"personal");
+    let residual: serde_json::Value =
+        serde_json::from_slice(&fs::read(home.path().join(".agents/.skill-lock.json"))?)?;
+    assert!(residual["skills"].get("obsolete-arthur-skill").is_none());
+    assert_eq!(
+        residual["skills"]["personal"]["source"],
+        "someone/personal-skills"
+    );
+
+    let drifted_agent = home.path().join(".codex/agents/agent-explorer.toml");
+    fs::write(&drifted_agent, b"misaligned")?;
+    let updated = run_install_session(home.path(), &[], Interaction::Plain(b"\ny\n"))?;
+    assert_eq!(updated.exit_code, Some(0));
+    assert!(updated.output.contains("Update configuration"));
+    assert!(
+        updated
+            .output
+            .contains("Proceed with update configuration?")
+    );
+    assert_ne!(fs::read(&drifted_agent)?, b"misaligned");
+
+    let current = run_install_session(home.path(), &[], Interaction::Plain(b"\n\n"))?;
+    assert_eq!(current.exit_code, Some(0));
+    assert!(current.output.contains("Everything is up to date"));
+    assert!(current.output.contains("Press Enter to close."));
     Ok(())
 }
 
@@ -454,7 +543,16 @@ fn run_install_session(
                         master.write_all(b"\r")?;
                         master.flush()?;
                         tui_stage = 1;
-                    } else if tui_stage == 1 && output.contains("Review filesystem plan") {
+                    } else if tui_stage == 1
+                        && [
+                            "Install Arthur Workflow",
+                            "Import existing configuration",
+                            "Update configuration",
+                            "Everything is up to date",
+                        ]
+                        .iter()
+                        .any(|title| output.contains(title))
+                    {
                         let input = if matches!(interaction, Interaction::TuiConfirm) {
                             b"\r".as_slice()
                         } else {

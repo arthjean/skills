@@ -332,6 +332,21 @@ fn provider_issue(provider: ProviderId, problem: ProviderIssue) -> HealthIssue {
     issue("provider_incompatible", IssueSeverity::Error, message, None)
 }
 
+pub(super) fn detect_providers() -> Vec<ProviderId> {
+    let path = std::env::var_os("PATH");
+    detect_providers_from(path.as_deref())
+}
+
+fn detect_providers_from(path: Option<&OsStr>) -> Vec<ProviderId> {
+    ProviderId::ALL
+        .into_iter()
+        .filter(|provider| {
+            resolve_executable_from(provider.as_str(), path)
+                .is_ok_and(|executable| executable.is_some())
+        })
+        .collect()
+}
+
 fn resolve_executable(command: &str) -> Result<Option<PathBuf>, String> {
     let path = std::env::var_os("PATH");
     resolve_executable_from(command, path.as_deref())
@@ -644,8 +659,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        OUTPUT_LIMIT, bounded_reader, bounded_version, capability_available, extract_version,
-        inspect_providers, provider_issue, receive_output, resolve_executable_from, wait_bounded,
+        OUTPUT_LIMIT, bounded_reader, bounded_version, capability_available, detect_providers_from,
+        extract_version, inspect_providers, provider_issue, receive_output,
+        resolve_executable_from, wait_bounded,
     };
     use crate::catalog::Catalog;
     use crate::provider::{ProviderId, resolve_roots_from};
@@ -735,6 +751,27 @@ mod tests {
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o777))?;
         assert!(resolve_executable_from("codex", Some(bin.as_os_str())).is_err());
         fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+        Ok(())
+    }
+
+    #[test]
+    fn detected_providers_follow_path() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempdir()?;
+        let bin = directory.path().join("bin");
+        fs::create_dir(&bin)?;
+        script(&bin, "claude", "exit 0")?;
+        let codex = script(&bin, "codex", "exit 0")?;
+
+        assert_eq!(
+            detect_providers_from(Some(bin.as_os_str())),
+            ProviderId::ALL
+        );
+
+        fs::remove_file(codex)?;
+        assert_eq!(
+            detect_providers_from(Some(bin.as_os_str())),
+            vec![ProviderId::Claude]
+        );
         Ok(())
     }
 

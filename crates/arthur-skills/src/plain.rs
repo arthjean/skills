@@ -2,6 +2,7 @@ use std::io::{self, BufRead, Write};
 
 use crate::app::{Action, App, Outcome, Provider, Step};
 use crate::transaction::SignalFlags;
+use crate::workflow::WorkflowState;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum PlainExit {
@@ -67,13 +68,29 @@ pub fn confirm_plan(
         )?;
         return Ok(PlainExit::Cancelled);
     }
-    writeln!(output, "Apply this complete plan? [y/N]")?;
+    let current = app
+        .review()
+        .and_then(|review| review.assessment.as_ref())
+        .is_some_and(|assessment| assessment.state == WorkflowState::Current);
+    if current {
+        writeln!(output, "Press Enter to close.")?;
+    } else {
+        let action = app
+            .review()
+            .and_then(|review| review.assessment.as_ref())
+            .map_or("apply", |assessment| assessment.state.action());
+        writeln!(output, "Proceed with {action}? [y/N]")?;
+    }
     output.flush()?;
     let Some(line) = read_line(input, signals)? else {
         return Ok(interrupted_or_cancelled(signals));
     };
-    match line.trim().to_ascii_lowercase().as_str() {
-        "y" | "yes" => match app.update(Action::Confirm) {
+    match (current, line.trim().to_ascii_lowercase().as_str()) {
+        (true, "") => match app.update(Action::Confirm) {
+            Outcome::ApplicationConfirmed => Ok(PlainExit::Confirmed),
+            _ => Ok(PlainExit::Cancelled),
+        },
+        (false, "y" | "yes") => match app.update(Action::Confirm) {
             Outcome::ApplicationConfirmed => Ok(PlainExit::Confirmed),
             _ => Ok(PlainExit::Cancelled),
         },
@@ -124,10 +141,45 @@ fn render_selection(app: &App, output: &mut impl Write) -> io::Result<()> {
 }
 
 fn render_review(app: &App, output: &mut impl Write) -> io::Result<()> {
-    writeln!(output, "Plan review: the complete catalog is included")?;
     let Some(review) = app.review() else {
+        writeln!(output, "Plan review: the complete catalog is included")?;
         return writeln!(output, "No plan loaded.");
     };
+    if let Some(assessment) = &review.assessment {
+        writeln!(output, "{}", assessment.state.title())?;
+        writeln!(
+            output,
+            "Skills: {}/{} found, {} missing, {} not aligned",
+            assessment.skills.found,
+            assessment.skills.total,
+            assessment.skills.missing,
+            assessment.skills.not_aligned
+        )?;
+        writeln!(
+            output,
+            "Agents: {}/{} found, {} missing, {} not aligned",
+            assessment.agents.found,
+            assessment.agents.total,
+            assessment.agents.missing,
+            assessment.agents.not_aligned
+        )?;
+        if assessment.legacy_skills_to_import > 0 {
+            writeln!(
+                output,
+                "Legacy skills to import: {}",
+                assessment.legacy_skills_to_import
+            )?;
+        }
+        if assessment.legacy_skills_to_clean > 0 {
+            writeln!(
+                output,
+                "Legacy skills to clean up: {}",
+                assessment.legacy_skills_to_clean
+            )?;
+        }
+        return Ok(());
+    }
+    writeln!(output, "Plan review: the complete catalog is included")?;
     for ((root, action), entries) in &review.groups {
         writeln!(output, "{:?} [{}]: {}", action, root, entries.len())?;
         for entry in entries {
@@ -258,6 +310,7 @@ mod tests {
             groups: Default::default(),
             applicable: true,
             notices: Vec::new(),
+            assessment: None,
         });
         let flags = SignalFlags::default();
         flags.record_for_test(signal_hook::consts::signal::SIGTERM);

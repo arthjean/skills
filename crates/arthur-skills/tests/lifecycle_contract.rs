@@ -9,9 +9,9 @@ use std::path::Path;
 use arthur_skills::catalog::{AssetKind, Catalog, Provider as CatalogProvider};
 use arthur_skills::lifecycle::{
     LifecycleError, LifecycleIntent, LifecycleNoticeCode, LifecycleTransition,
-    prepare_lifecycle_transition,
+    prepare_import_transition, prepare_lifecycle_transition, prepare_reconciliation_transition,
 };
-use arthur_skills::operations::operations_for_plan;
+use arthur_skills::operations::{operations_for_import, operations_for_plan};
 use arthur_skills::plan::PlanAction;
 use arthur_skills::provider::{ProviderId, ResolvedRoots, resolve_roots_from};
 use arthur_skills::receipt::{OwnedAsset, OwnedAssetKind, Receipt, RetainedUnmanagedAsset};
@@ -282,6 +282,76 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
             .count(),
         1
     );
+    Ok(())
+}
+
+#[test]
+fn import_and_reconciliation_repair_catalog_assets_without_claiming_personal_assets() -> TestResult
+{
+    let catalog = Catalog::load()?;
+
+    let import_home = tempfile::tempdir()?;
+    let import_roots = roots(&import_home, &ProviderId::ALL)?;
+    install_both(&catalog, &import_roots, "prepare-import")?;
+    fs::remove_file(&import_roots.receipt_path)?;
+    let drifted_skill = import_roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let missing_agent = import_home
+        .path()
+        .join(".codex/agents/docs-researcher.toml");
+    let personal = import_roots.canonical_skills.join("personal/SKILL.md");
+    fs::write(&drifted_skill, b"old Arthur content")?;
+    fs::remove_file(&missing_agent)?;
+    fs::create_dir_all(personal.parent().ok_or("personal skill has no parent")?)?;
+    fs::write(&personal, b"personal")?;
+
+    let imported = prepare_import_transition(&catalog, &import_roots, &ProviderId::ALL, None)?;
+    assert!(imported.plan.applicable);
+    assert!(
+        imported.plan.entries.iter().any(|entry| {
+            entry.destination == drifted_skill && entry.action == PlanAction::Update
+        })
+    );
+    assert!(
+        imported.plan.entries.iter().any(|entry| {
+            entry.destination == missing_agent && entry.action == PlanAction::Create
+        })
+    );
+    let operations = operations_for_import(
+        &imported.plan,
+        &import_roots.canonical.lexical.join(".skill-lock.json"),
+        None,
+        &import_roots,
+        &imported.receipt,
+        "import-existing",
+    )?;
+    let engine =
+        TransactionEngine::new(import_roots.state_directory.clone(), SignalFlags::default());
+    assert_eq!(
+        engine.apply("import-existing", operations)?,
+        TransactionOutcome::Committed
+    );
+    assert_eq!(fs::read(&personal)?, b"personal");
+    assert!(imported.receipt.owned_asset(&personal).is_none());
+
+    let update_home = tempfile::tempdir()?;
+    let update_roots = roots(&update_home, &ProviderId::ALL)?;
+    let installed = install_both(&catalog, &update_roots, "prepare-update")?;
+    let drifted_agent = update_home.path().join(".codex/agents/agent-explorer.toml");
+    fs::write(&drifted_agent, b"locally misaligned")?;
+    let updated = prepare_reconciliation_transition(
+        &catalog,
+        &update_roots,
+        &installed.receipt,
+        &ProviderId::ALL,
+    )?;
+    assert!(updated.plan.applicable);
+    assert!(
+        updated.plan.entries.iter().any(|entry| {
+            entry.destination == drifted_agent && entry.action == PlanAction::Update
+        })
+    );
+    apply(&update_roots, &updated, "reconcile-existing")?;
+    assert_ne!(fs::read(&drifted_agent)?, b"locally misaligned");
     Ok(())
 }
 

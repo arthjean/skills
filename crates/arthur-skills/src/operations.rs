@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::adoption::AdoptionPlan;
+use crate::adoption::{AdoptionPlan, LegacyImportPlan, LockIdentity};
 use crate::plan::{
     MutationKind, NodeKind, OwnershipProof as PlanOwnership, Plan, PlanAction, PlannedInverse,
     PlannedMutation, Precondition as PlanPrecondition,
@@ -114,34 +114,98 @@ pub fn operations_for_adoption(
         return Err(OperationBuildError::AdoptionBlocked);
     }
     validate_adoption_receipt_coverage(adoption, next_receipt)?;
-    let archive_root = root_for_destination(roots, &adoption.archive_path)?;
+    let mut operations = legacy_lock_operations(
+        lock_path,
+        &adoption.archive_path,
+        &adoption.original_identity,
+        &adoption.original_bytes,
+        &adoption.original_hash,
+        &adoption.residual_bytes,
+        roots,
+    )?;
+    operations.push(receipt_operation(roots, next_receipt, transaction_id)?);
+    Ok(operations)
+}
+
+pub fn operations_for_import(
+    plan: &Plan,
+    lock_path: &Path,
+    legacy: Option<&LegacyImportPlan>,
+    roots: &ResolvedRoots,
+    next_receipt: &Receipt,
+    transaction_id: &str,
+) -> Result<Vec<Operation>, OperationBuildError> {
+    if !plan.applicable {
+        return Err(OperationBuildError::PlanBlocked);
+    }
+    validate_plan_receipt_coverage(plan, next_receipt)?;
+    let mut operations = match legacy {
+        Some(legacy) => legacy_lock_operations(
+            lock_path,
+            &legacy.archive_path,
+            &legacy.original_identity,
+            &legacy.original_bytes,
+            &legacy.original_hash,
+            &legacy.residual_bytes,
+            roots,
+        )?,
+        None => Vec::new(),
+    };
+    let mut filesystem = plan
+        .operations
+        .iter()
+        .enumerate()
+        .map(|(index, mutation)| operation_for_mutation(index, mutation, roots))
+        .collect::<Result<Vec<_>, _>>()?;
+    for operation in &mut filesystem {
+        if let OwnershipProof::Receipt { source_id, sha256 } = &operation.ownership {
+            operation.ownership = OwnershipProof::Adopted {
+                source_id: source_id.clone(),
+                sha256: sha256.clone(),
+            };
+        }
+    }
+    operations.append(&mut filesystem);
+    operations.push(receipt_operation(roots, next_receipt, transaction_id)?);
+    Ok(operations)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn legacy_lock_operations(
+    lock_path: &Path,
+    archive_path: &Path,
+    original_identity: &LockIdentity,
+    original_bytes: &[u8],
+    original_hash: &str,
+    residual_bytes: &[u8],
+    roots: &ResolvedRoots,
+) -> Result<Vec<Operation>, OperationBuildError> {
+    let archive_root = root_for_destination(roots, archive_path)?;
     let lock_root = root_for_destination(roots, lock_path)?;
-    let archive_precondition = snapshot_path(&adoption.archive_path)?;
+    let archive_precondition = snapshot_path(archive_path)?;
     if archive_precondition.kind != PathKind::Absent {
-        return Err(OperationBuildError::StalePlan(
-            adoption.archive_path.clone(),
-        ));
+        return Err(OperationBuildError::StalePlan(archive_path.to_path_buf()));
     }
     let private_mode = effective_file_mode(0o600);
     let archive = Operation::new(
         "00000000-adoption-archive",
         OperationKind::WriteFile,
         archive_root,
-        adoption.archive_path.clone(),
+        archive_path.to_path_buf(),
         PathSnapshot::absent(),
-        PathSnapshot::file(&adoption.original_bytes, private_mode),
+        PathSnapshot::file(original_bytes, private_mode),
         Inverse::RemoveCreated,
         OwnershipProof::UnownedDestination,
         OperationPayload::File {
-            bytes: adoption.original_bytes.clone(),
+            bytes: original_bytes.to_vec(),
             mode: private_mode,
         },
     )?;
 
     let lock_precondition = snapshot_path(lock_path)?;
     if lock_precondition.kind != PathKind::File
-        || lock_precondition.sha256.as_deref() != Some(adoption.original_hash.as_str())
-        || lock_precondition.size != Some(adoption.original_identity.size)
+        || lock_precondition.sha256.as_deref() != Some(original_hash)
+        || lock_precondition.size != Some(original_identity.size)
     {
         return Err(OperationBuildError::StalePlan(lock_path.to_path_buf()));
     }
@@ -152,33 +216,29 @@ pub fn operations_for_adoption(
         lock_root,
         lock_path.to_path_buf(),
         lock_precondition.clone(),
-        PathSnapshot::file(&adoption.residual_bytes, lock_mode),
+        PathSnapshot::file(residual_bytes, lock_mode),
         Inverse::RestoreBackup {
             original: lock_precondition,
         },
         OwnershipProof::Adopted {
             source_id: "vercel-skills-v3-lock".to_owned(),
-            sha256: Some(adoption.original_hash.clone()),
+            sha256: Some(original_hash.to_owned()),
         },
         OperationPayload::File {
-            bytes: adoption.residual_bytes.clone(),
+            bytes: residual_bytes.to_vec(),
             mode: lock_mode,
         },
     )?
     .with_revalidation(FileIdentityProof {
-        device: adoption.original_identity.device,
-        inode: adoption.original_identity.inode,
-        size: adoption.original_identity.size,
-        mtime_seconds: adoption.original_identity.mtime_seconds,
-        mtime_nanoseconds: adoption.original_identity.mtime_nanoseconds,
-        sha256: adoption.original_hash.clone(),
+        device: original_identity.device,
+        inode: original_identity.inode,
+        size: original_identity.size,
+        mtime_seconds: original_identity.mtime_seconds,
+        mtime_nanoseconds: original_identity.mtime_nanoseconds,
+        sha256: original_hash.to_owned(),
     })?;
 
-    Ok(vec![
-        archive,
-        rewrite,
-        receipt_operation(roots, next_receipt, transaction_id)?,
-    ])
+    Ok(vec![archive, rewrite])
 }
 
 fn validate_plan_receipt_coverage(

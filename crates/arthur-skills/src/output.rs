@@ -214,22 +214,33 @@ pub fn write_json(envelope: &Envelope, output: &mut impl Write) -> io::Result<()
 }
 
 pub fn write_human(envelope: &Envelope, output: &mut impl Write) -> io::Result<()> {
+    if envelope.data.get("result").and_then(Value::as_str) == Some("already_current")
+        && let Some(message) = envelope.data.get("message").and_then(Value::as_str)
+    {
+        writeln!(output, "{message}")?;
+        for diagnostic in &envelope.diagnostics {
+            writeln!(output, "{}: {}", diagnostic.code, diagnostic.message)?;
+        }
+        return Ok(());
+    }
     if !envelope.operations.is_empty() {
         for (action, count) in &envelope.summary {
             writeln!(output, "{action}: {count}")?;
         }
-        for operation in &envelope.operations {
-            writeln!(
-                output,
-                "{:?} {} ({})",
-                operation.action,
-                operation
-                    .destination_utf8
-                    .as_deref()
-                    .or(operation.destination_bytes_hex.as_deref())
-                    .unwrap_or("<missing path>"),
-                operation.reason
-            )?;
+        if envelope.command.is_some() {
+            for operation in &envelope.operations {
+                writeln!(
+                    output,
+                    "{:?} {} ({})",
+                    operation.action,
+                    operation
+                        .destination_utf8
+                        .as_deref()
+                        .or(operation.destination_bytes_hex.as_deref())
+                        .unwrap_or("<missing path>"),
+                    operation.reason
+                )?;
+            }
         }
     }
     if !envelope.data.is_null() {

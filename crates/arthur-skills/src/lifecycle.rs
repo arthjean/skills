@@ -6,13 +6,16 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
+use crate::adoption::LegacyImportPlan;
 use crate::catalog::{AssetKind, Catalog, Provider as CatalogProvider};
 use crate::engine::{EngineError, plan_desired_state_with_removal_policy};
 use crate::plan::{DesiredAsset, DesiredPayload, Plan, PlanAction, RemovalPolicy};
 use crate::provider::{ProviderId, ProviderRegistry, ResolvedProvider, ResolvedRoots};
 use crate::receipt::{OwnedAsset, OwnedAssetKind, Receipt, ReceiptError, RetainedUnmanagedAsset};
+use crate::transaction::{PathKind, snapshot_path};
 
 const DIRECTORY_MODE: u32 = 0o755;
+const LEGACY_IMPORT_ENTRY_LIMIT: usize = 100_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LifecycleIntent {
@@ -167,6 +170,258 @@ pub fn prepare_lifecycle_transition(
         receipt,
         notices,
     })
+}
+
+pub fn prepare_import_transition(
+    catalog: &Catalog,
+    roots: &ResolvedRoots,
+    providers: &[ProviderId],
+    legacy: Option<&LegacyImportPlan>,
+) -> Result<LifecycleTransition, LifecycleError> {
+    let selected_providers = selected_after(
+        &LifecycleIntent::Install {
+            providers: providers.to_vec(),
+        },
+        &[],
+    )?;
+    require_provider_roots(roots, &selected_providers)?;
+    let managed = build_desired(catalog, roots, None, &selected_providers)?;
+    let mut baseline = Receipt::new(
+        env!("CARGO_PKG_VERSION"),
+        &catalog.manifest().catalog_sha256,
+        roots,
+    );
+    for provider in &mut baseline.providers {
+        provider.managed_integration = selected_providers.contains(&provider.provider);
+    }
+    for entry in managed.values() {
+        if let Some(asset) = observed_owned_asset(
+            &entry.asset.source_id,
+            &entry.asset.destination,
+            &entry.references,
+        )? {
+            baseline.assets.push(asset);
+        }
+    }
+    if let Some(legacy) = legacy {
+        for name in &legacy.obsolete_skill_names {
+            collect_legacy_skill(
+                &roots.canonical_skills.join(name),
+                name,
+                &selected_providers,
+                &mut baseline.assets,
+            )?;
+        }
+    }
+    baseline
+        .assets
+        .sort_by(|left, right| left.destination.cmp(&right.destination));
+    baseline.validate()?;
+
+    transition_from_baseline(catalog, roots, &baseline, &selected_providers, managed)
+}
+
+pub fn prepare_reconciliation_transition(
+    catalog: &Catalog,
+    roots: &ResolvedRoots,
+    current: &Receipt,
+    providers: &[ProviderId],
+) -> Result<LifecycleTransition, LifecycleError> {
+    current.validate()?;
+    current.validate_roots(roots)?;
+    let selected_providers = selected_after(
+        &LifecycleIntent::Install {
+            providers: providers.to_vec(),
+        },
+        &managed_providers(Some(current)),
+    )?;
+    require_provider_roots(roots, &selected_providers)?;
+    let managed = build_desired(catalog, roots, Some(current), &selected_providers)?;
+    let mut baseline = current.clone();
+    baseline.assets = current
+        .assets
+        .iter()
+        .map(|asset| observed_owned_asset(&asset.source_id, &asset.destination, &asset.references))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    baseline.validate()?;
+
+    transition_from_baseline(catalog, roots, &baseline, &selected_providers, managed)
+}
+
+fn transition_from_baseline(
+    catalog: &Catalog,
+    roots: &ResolvedRoots,
+    baseline: &Receipt,
+    selected_providers: &[ProviderId],
+    managed: BTreeMap<PathBuf, ManagedDesired>,
+) -> Result<LifecycleTransition, LifecycleError> {
+    let desired = managed
+        .values()
+        .map(|entry| entry.asset.clone())
+        .collect::<Vec<_>>();
+    let plan = plan_desired_state_with_removal_policy(
+        roots,
+        Some(baseline),
+        &desired,
+        RemovalPolicy::BlockOnDrift,
+    )?;
+    let receipt = build_receipt(
+        catalog,
+        roots,
+        Some(baseline),
+        selected_providers,
+        &managed,
+        &plan,
+    )?;
+    let notices = lifecycle_notices(
+        &LifecycleIntent::Install {
+            providers: selected_providers.to_vec(),
+        },
+        &managed_providers(Some(baseline)),
+        selected_providers,
+    );
+    Ok(LifecycleTransition {
+        selected_providers: selected_providers.to_vec(),
+        plan,
+        receipt,
+        notices,
+    })
+}
+
+fn require_provider_roots(
+    roots: &ResolvedRoots,
+    providers: &[ProviderId],
+) -> Result<(), LifecycleError> {
+    for provider in providers {
+        if roots.provider(*provider).is_none() {
+            return Err(LifecycleError::MissingProviderRoot(*provider));
+        }
+    }
+    Ok(())
+}
+
+fn observed_owned_asset(
+    source_id: &str,
+    destination: &Path,
+    references: &[ProviderId],
+) -> Result<Option<OwnedAsset>, LifecycleError> {
+    let snapshot = snapshot_path(destination).map_err(|error| LifecycleError::UnsafeContainer {
+        path: destination.to_path_buf(),
+        detail: error.to_string(),
+    })?;
+    let (kind, hash, mode, link_target) = match snapshot.kind {
+        PathKind::Absent => return Ok(None),
+        PathKind::File => (OwnedAssetKind::File, snapshot.sha256, snapshot.mode, None),
+        PathKind::Directory => (OwnedAssetKind::Directory, None, snapshot.mode, None),
+        PathKind::Symlink => (OwnedAssetKind::Symlink, None, None, snapshot.link_target),
+    };
+    Ok(Some(OwnedAsset {
+        source_id: source_id.to_owned(),
+        destination: destination.to_path_buf(),
+        kind,
+        hash,
+        mode,
+        link_target,
+        references: references.to_vec(),
+    }))
+}
+
+fn collect_legacy_skill(
+    root: &Path,
+    name: &str,
+    references: &[ProviderId],
+    assets: &mut Vec<OwnedAsset>,
+) -> Result<(), LifecycleError> {
+    let root_metadata = match fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(LifecycleError::UnsafeContainer {
+                path: root.to_path_buf(),
+                detail: error.to_string(),
+            });
+        }
+    };
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        if let Some(asset) =
+            observed_owned_asset(&legacy_source_id(root, root, name)?, root, references)?
+        {
+            assets.push(asset);
+        }
+        return Ok(());
+    }
+    let canonical_root =
+        fs::canonicalize(root).map_err(|error| LifecycleError::UnsafeContainer {
+            path: root.to_path_buf(),
+            detail: error.to_string(),
+        })?;
+    let mut pending = vec![root.to_path_buf()];
+    let mut imported = Vec::new();
+    while let Some(path) = pending.pop() {
+        if imported.len() >= LEGACY_IMPORT_ENTRY_LIMIT {
+            return Err(LifecycleError::UnsafeContainer {
+                path,
+                detail: format!(
+                    "legacy skill exceeds the {LEGACY_IMPORT_ENTRY_LIMIT} entry safety limit"
+                ),
+            });
+        }
+        let metadata =
+            fs::symlink_metadata(&path).map_err(|error| LifecycleError::UnsafeContainer {
+                path: path.to_path_buf(),
+                detail: error.to_string(),
+            })?;
+        if !metadata.file_type().is_symlink() {
+            let canonical =
+                fs::canonicalize(&path).map_err(|error| LifecycleError::UnsafeContainer {
+                    path: path.to_path_buf(),
+                    detail: error.to_string(),
+                })?;
+            if !canonical.starts_with(&canonical_root) {
+                return Err(LifecycleError::UnsafeContainer {
+                    path,
+                    detail: "legacy skill traversal escaped its recorded directory".to_owned(),
+                });
+            }
+        }
+        let Some(asset) =
+            observed_owned_asset(&legacy_source_id(root, &path, name)?, &path, references)?
+        else {
+            continue;
+        };
+        if asset.kind == OwnedAssetKind::Directory {
+            let entries = fs::read_dir(&path).map_err(|error| LifecycleError::UnsafeContainer {
+                path: path.to_path_buf(),
+                detail: error.to_string(),
+            })?;
+            for entry in entries {
+                let entry = entry.map_err(|error| LifecycleError::UnsafeContainer {
+                    path: path.to_path_buf(),
+                    detail: error.to_string(),
+                })?;
+                pending.push(entry.path());
+            }
+        }
+        imported.push(asset);
+    }
+    assets.extend(imported);
+    Ok(())
+}
+
+fn legacy_source_id(root: &Path, path: &Path, name: &str) -> Result<String, LifecycleError> {
+    let relative = path
+        .strip_prefix(root)
+        .map_err(|error| LifecycleError::InvalidCatalogPath(error.to_string()))?;
+    if relative.as_os_str().is_empty() {
+        return Ok(format!("legacy:skills/{name}"));
+    }
+    let relative = relative
+        .to_str()
+        .ok_or_else(|| LifecycleError::InvalidCatalogPath(path.display().to_string()))?;
+    Ok(format!("legacy:skills/{name}/{relative}"))
 }
 
 fn managed_providers(receipt: Option<&Receipt>) -> Vec<ProviderId> {

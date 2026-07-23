@@ -10,6 +10,7 @@ use ratatui::{Frame, TerminalOptions, Viewport};
 
 use crate::app::{Action, App, Outcome, Provider, Step};
 use crate::transaction::{SIGINT_EXIT_CODE, SignalFlags};
+use crate::workflow::{AssetSummary, WorkflowState};
 
 const INLINE_HEIGHT: u16 = 16;
 
@@ -210,8 +211,14 @@ fn render_review(frame: &mut Frame<'_>, app: &App, colors: bool) {
         Constraint::Length(1),
     ])
     .areas(frame.area());
+    let assessment = app.review().and_then(|review| review.assessment.as_ref());
+    let title = assessment.map_or("Review filesystem plan", |value| value.state.title());
+    let subtitle = assessment.map_or(
+        "The complete catalog is always included.",
+        workflow_subtitle,
+    );
     frame.render_widget(
-        Paragraph::new("Review filesystem plan\nThe complete catalog is always included.")
+        Paragraph::new(format!("{title}\n{subtitle}"))
             .style(Style::default().add_modifier(Modifier::BOLD)),
         header,
     );
@@ -226,10 +233,15 @@ fn render_review(frame: &mut Frame<'_>, app: &App, colors: bool) {
     } else {
         Style::default()
     };
-    let footer_text = if applicable {
-        "Enter apply  Esc cancel  Ctrl+C interrupt"
+    let footer_text = if let Some(assessment) = assessment {
+        format!(
+            "Enter {}  Esc cancel  Ctrl+C interrupt",
+            assessment.state.action()
+        )
+    } else if applicable {
+        "Enter apply  Esc cancel  Ctrl+C interrupt".to_owned()
     } else {
-        "Apply disabled: resolve conflicts or run adopt  Esc cancel"
+        "Apply disabled: resolve conflicts or run adopt  Esc cancel".to_owned()
     };
     frame.render_widget(Paragraph::new(footer_text).style(footer_style), footer);
 }
@@ -238,6 +250,30 @@ fn review_text(app: &App) -> Text<'static> {
     let Some(review) = app.review() else {
         return Text::from("No plan loaded.");
     };
+    if let Some(assessment) = &review.assessment {
+        let mut lines = vec![
+            summary_line("Skills", assessment.skills),
+            summary_line("Agents", assessment.agents),
+        ];
+        if assessment.legacy_skills_to_import > 0 {
+            lines.push(Line::from(format!(
+                "Legacy skills to import: {}",
+                assessment.legacy_skills_to_import
+            )));
+        }
+        if assessment.legacy_skills_to_clean > 0 {
+            lines.push(Line::from(format!(
+                "Legacy skills to clean up: {}",
+                assessment.legacy_skills_to_clean
+            )));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(workflow_explanation(assessment.state)));
+        for notice in &review.notices {
+            lines.push(Line::from(format!("Notice: {}", notice.message)));
+        }
+        return Text::from(lines);
+    }
     let mut lines = Vec::new();
     for ((root, action), entries) in &review.groups {
         lines.push(Line::from(format!(
@@ -260,6 +296,39 @@ fn review_text(app: &App) -> Text<'static> {
         lines.push(Line::from(format!("Notice: {}", notice.message)));
     }
     Text::from(lines)
+}
+
+fn summary_line(label: &str, summary: AssetSummary) -> Line<'static> {
+    Line::from(format!(
+        "{label}: {}/{} found, {} missing, {} not aligned",
+        summary.found, summary.total, summary.missing, summary.not_aligned
+    ))
+}
+
+const fn workflow_subtitle(assessment: &crate::workflow::WorkflowAssessment) -> &'static str {
+    match assessment.state {
+        WorkflowState::FreshInstall => "No existing Arthur configuration was found.",
+        WorkflowState::Import => "Existing Arthur assets were found on this machine.",
+        WorkflowState::Update => "Your managed configuration needs reconciliation.",
+        WorkflowState::Current => "Your skills and agents match the embedded catalog.",
+    }
+}
+
+const fn workflow_explanation(state: WorkflowState) -> &'static str {
+    match state {
+        WorkflowState::FreshInstall => {
+            "The catalog skills and selected provider agents will be installed transactionally."
+        }
+        WorkflowState::Import => {
+            "Matching assets will be imported. Misaligned assets will be replaced, and obsolete Arthur entries will be cleaned up. Unrelated assets are preserved."
+        }
+        WorkflowState::Update => {
+            "Missing assets will be restored and misaligned managed assets will be updated transactionally."
+        }
+        WorkflowState::Current => {
+            "Everything is already current. You can close Arthur Workflow safely."
+        }
+    }
 }
 
 #[cfg(test)]

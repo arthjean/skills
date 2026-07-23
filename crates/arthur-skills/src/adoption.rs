@@ -94,6 +94,17 @@ pub struct AdoptionPlan {
     pub diagnostics: Vec<AdoptionDiagnostic>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LegacyImportPlan {
+    pub original_identity: LockIdentity,
+    pub original_bytes: Vec<u8>,
+    pub original_hash: String,
+    pub archive_path: PathBuf,
+    pub residual_bytes: Vec<u8>,
+    pub managed_skill_names: Vec<String>,
+    pub obsolete_skill_names: Vec<String>,
+}
+
 impl AdoptionPlan {
     #[must_use]
     pub fn revalidation_token(&self) -> RevalidationToken {
@@ -294,6 +305,99 @@ pub fn inspect(
         applicable,
         diagnostics,
     })
+}
+
+/// Prepares ownership transfer for Arthur skills recorded by Vercel Skills v3.
+///
+/// Catalog-named entries transfer regardless of their previous source so that one
+/// path never has two owners. Other foreign entries remain untouched. The caller
+/// may remove only stale directories listed in `obsolete_skill_names`.
+pub fn inspect_legacy_import(
+    lock_path: &Path,
+    archive_path: &Path,
+    catalog_skill_names: &BTreeSet<String>,
+) -> Result<Option<LegacyImportPlan>, AdoptionError> {
+    require_safe_absolute(lock_path, "legacy lock path")?;
+    require_safe_absolute(archive_path, "legacy lock archive path")?;
+    match fs::symlink_metadata(lock_path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(source) => {
+            return Err(AdoptionError::Io {
+                operation: "inspect legacy lock",
+                path: lock_path.to_path_buf(),
+                source,
+            });
+        }
+    }
+    if fs::symlink_metadata(archive_path).is_ok() {
+        return Err(AdoptionError::Io {
+            operation: "prepare legacy lock archive",
+            path: archive_path.to_path_buf(),
+            source: io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "the exact legacy-lock archive destination already exists",
+            ),
+        });
+    }
+
+    let snapshot = read_stable_regular_file(lock_path, "read legacy lock for import")?;
+    let mut legacy = parse_legacy_lock(&snapshot.bytes)?;
+    let mut managed_skill_names = legacy
+        .skills
+        .0
+        .iter()
+        .filter(|(name, entry)| {
+            catalog_skill_names.contains(*name) || is_arthur_catalog_source(&entry.source)
+        })
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    let mut obsolete_skill_names = legacy
+        .skills
+        .0
+        .iter()
+        .filter(|(name, entry)| {
+            !catalog_skill_names.contains(*name) && is_arthur_catalog_source(&entry.source)
+        })
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    managed_skill_names.sort();
+    obsolete_skill_names.sort();
+    if managed_skill_names.is_empty() {
+        return Ok(None);
+    }
+    for name in &managed_skill_names {
+        legacy.skills.0.remove(name);
+    }
+    let residual_bytes = serde_json::to_vec_pretty(&legacy).map_err(|error| {
+        AdoptionError::InvalidLegacyLock(format!(
+            "cannot serialize residual lock for import: {error}"
+        ))
+    })?;
+
+    Ok(Some(LegacyImportPlan {
+        original_identity: snapshot.identity,
+        original_bytes: snapshot.bytes,
+        original_hash: snapshot.sha256,
+        archive_path: archive_path.to_path_buf(),
+        residual_bytes,
+        managed_skill_names,
+        obsolete_skill_names,
+    }))
+}
+
+fn is_arthur_catalog_source(source: &str) -> bool {
+    let normalized = source
+        .trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .to_ascii_lowercase();
+    let normalized = normalized
+        .strip_prefix("https://github.com/")
+        .or_else(|| normalized.strip_prefix("http://github.com/"))
+        .or_else(|| normalized.strip_prefix("git@github.com:"))
+        .unwrap_or(&normalized);
+    matches!(normalized, "arthurdev44/skills" | "arthjean/skills")
 }
 
 /// Revalidates the inode, size, mtime and bytes immediately before lock replacement.
@@ -1100,6 +1204,46 @@ mod tests {
         assert!(blocked.entries.is_empty());
         assert_eq!(decision(&blocked, false, true), AdoptionDecision::Blocked);
         assert_eq!(decision(&blocked, true, true), AdoptionDecision::Blocked);
+    }
+
+    #[test]
+    fn legacy_import_claims_only_arthur_sources_and_identifies_obsolete_skills() {
+        let temp = match TempDir::new() {
+            Ok(temp) => temp,
+            Err(error) => panic!("cannot create fixture: {error}"),
+        };
+        let (lock_path, archive_path) = write_fixture_lock(
+            &temp,
+            &format!(
+                "{{\"current\":{},\"obsolete\":{},\"personal\":{}}}",
+                minimal_skill("someone/reusable-skills"),
+                minimal_skill("git@github.com:arthurdev44/skills.git"),
+                minimal_skill("someone/personal-skills")
+            ),
+        );
+        let catalog = BTreeSet::from(["current".to_owned()]);
+
+        let plan = match inspect_legacy_import(&lock_path, &archive_path, &catalog) {
+            Ok(Some(plan)) => plan,
+            Ok(None) => panic!("Arthur entries were not detected"),
+            Err(error) => panic!("legacy import inspection failed: {error}"),
+        };
+
+        assert_eq!(
+            plan.managed_skill_names,
+            vec!["current".to_owned(), "obsolete".to_owned()]
+        );
+        assert_eq!(plan.obsolete_skill_names, vec!["obsolete".to_owned()]);
+        let residual: serde_json::Value = match serde_json::from_slice(&plan.residual_bytes) {
+            Ok(residual) => residual,
+            Err(error) => panic!("invalid residual lock: {error}"),
+        };
+        assert!(residual["skills"].get("current").is_none());
+        assert!(residual["skills"].get("obsolete").is_none());
+        assert_eq!(
+            residual["skills"]["personal"]["source"],
+            "someone/personal-skills"
+        );
     }
 
     #[test]

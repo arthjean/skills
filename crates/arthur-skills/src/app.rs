@@ -4,6 +4,7 @@ use crate::lifecycle::LifecycleNotice;
 use crate::plan::{Plan, PlanAction, PlanEntry};
 pub use crate::provider::ProviderId as Provider;
 use crate::provider::ResolvedRoots;
+use crate::workflow::WorkflowAssessment;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
@@ -36,10 +37,29 @@ pub struct Review {
     pub groups: BTreeMap<(String, PlanAction), Vec<PlanEntry>>,
     pub applicable: bool,
     pub notices: Vec<LifecycleNotice>,
+    pub assessment: Option<WorkflowAssessment>,
 }
 
 impl Review {
     pub fn from_plan(plan: &Plan, notices: &[LifecycleNotice], roots: &ResolvedRoots) -> Self {
+        Self::build(plan, notices, roots, None)
+    }
+
+    pub fn for_workflow(
+        plan: &Plan,
+        notices: &[LifecycleNotice],
+        roots: &ResolvedRoots,
+        assessment: WorkflowAssessment,
+    ) -> Self {
+        Self::build(plan, notices, roots, Some(assessment))
+    }
+
+    fn build(
+        plan: &Plan,
+        notices: &[LifecycleNotice],
+        roots: &ResolvedRoots,
+        assessment: Option<WorkflowAssessment>,
+    ) -> Self {
         let mut groups = BTreeMap::<(String, PlanAction), Vec<PlanEntry>>::new();
         for entry in &plan.entries {
             let root = roots
@@ -59,6 +79,7 @@ impl Review {
             groups,
             applicable: plan.applicable,
             notices: notices.to_vec(),
+            assessment,
         }
     }
 }
@@ -220,6 +241,7 @@ mod tests {
             groups: Default::default(),
             applicable: false,
             notices: Vec::new(),
+            assessment: None,
         });
         assert_eq!(app.update(Action::Toggle), Outcome::Continue);
         assert_eq!(app.update(Action::Confirm), Outcome::Continue);

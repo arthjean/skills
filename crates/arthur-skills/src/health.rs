@@ -15,7 +15,11 @@ use crate::transaction::{PathKind, snapshot_path};
 mod probes;
 
 pub use probes::{CapabilityProbe, ProviderProbe};
-use probes::{inspect_capabilities, inspect_providers};
+use probes::{detect_providers, inspect_capabilities, inspect_providers};
+
+pub(crate) fn detected_providers() -> Vec<ProviderId> {
+    detect_providers()
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
