@@ -529,13 +529,14 @@ fn ci_configuration_preserves_quality_contracts() -> TestResult {
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let ci = fs::read_to_string(workspace.join(".github/workflows/ci.yml"))?;
     for contract in [
-        "runner: [ubuntu-24.04, macos-15]",
+        "runner: [ubuntu-24.04, macos-15, windows-2025]",
         "cargo fmt --all -- --check",
         "cargo check --workspace --all-targets --all-features",
         "cargo clippy --workspace --all-targets --all-features",
         "cargo test --workspace --all-targets --all-features",
         "cargo llvm-cov --workspace --all-features --fail-under-regions 90",
         "cargo deny check",
+        "cargo test -p arthur-skills --all-targets --all-features",
         "cargo-llvm-cov@0.8.4,cargo-deny@0.19.8",
     ] {
         assert!(ci.contains(contract), "missing CI contract: {contract}");

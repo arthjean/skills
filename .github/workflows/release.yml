@@ -119,6 +119,8 @@ jobs:
             runner: macos-15-intel
           - target: aarch64-apple-darwin
             runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
     runs-on: ${{ matrix.runner }}
     env:
       RELEASE_TAG: ${{ needs.plan.outputs.release_tag }}
@@ -164,6 +166,7 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
           cp dist-manifest.json "target/distrib/${{ matrix.target }}-dist-manifest.json"
       - name: Smoke the archive without language runtimes
+        if: runner.os != 'Windows'
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
@@ -243,6 +246,86 @@ jobs:
           )"
           jq -e '.exit_code == 0 and (.data.catalog_sha256 | test("^[0-9a-f]{64}$"))' \
             <<<"$status_json" >/dev/null
+      - name: Smoke the Windows archive without language runtimes
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archives = @(Get-ChildItem "target/distrib/*-$env:TARGET.zip")
+          if ($archives.Count -ne 1) {
+            throw "Expected one native archive for $env:TARGET, found $($archives.Count)"
+          }
+          $archive = $archives[0]
+          if ($archive.Length -gt 26214400) {
+            throw "Native archive exceeds 25 MB: $($archive.Length) bytes"
+          }
+
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "arthur-skills-smoke-$env:GITHUB_RUN_ID"
+          $smokeHome = Join-Path $env:RUNNER_TEMP "arthur-skills-home-$env:GITHUB_RUN_ID"
+          $smokeWork = Join-Path $env:RUNNER_TEMP "arthur-skills-work-$env:GITHUB_RUN_ID"
+          $emptyPath = Join-Path $env:RUNNER_TEMP "arthur-skills-path-$env:GITHUB_RUN_ID"
+          foreach ($path in @($smokeRoot, $smokeHome, $smokeWork, $emptyPath)) {
+            New-Item -ItemType Directory -Path $path | Out-Null
+          }
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $smokeRoot
+
+          $packageRoots = @(Get-ChildItem -LiteralPath $smokeRoot -Directory)
+          if ($packageRoots.Count -ne 1) {
+            throw "Archive must contain one package directory"
+          }
+          $packageRoot = $packageRoots[0].FullName
+          $entries = @(Get-ChildItem -LiteralPath $packageRoot)
+          if ($entries.Count -ne 4 -or @($entries | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+            throw "Archive package must contain exactly four regular files"
+          }
+          foreach ($required in @("arthur-skills.exe", "LICENSE", "README.md", "THIRD_PARTY.md")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $packageRoot $required) -PathType Leaf)) {
+              throw "Missing release file: $required"
+            }
+          }
+          $entryNames = $entries.Name -join "`n"
+          if ($entryNames -match '(^|[\\/])\.\.([\\/]|$)|agents[\\/]codex[\\/]evals|(^|[\\/])target([\\/]|$)') {
+            throw "Archive contains a forbidden path"
+          }
+          foreach ($entry in $entries) {
+            $content = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($entry.FullName))
+            if ($content -match 'agents[\\/]codex[\\/]evals|/home/arthur|/Users/arthur|-----BEGIN ([A-Z]+ )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' -or
+                $content.Contains($env:GITHUB_WORKSPACE)) {
+              throw "Release file contains development paths or secret material: $($entry.Name)"
+            }
+          }
+
+          $binary = Join-Path $packageRoot "arthur-skills.exe"
+          $originalHome = $env:HOME
+          $originalUserProfile = $env:USERPROFILE
+          $originalPath = $env:PATH
+          try {
+            $env:HOME = $smokeHome
+            $env:USERPROFILE = $smokeHome
+            $env:PATH = $emptyPath
+            Push-Location $smokeWork
+            & $binary --help | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "--help failed with exit code $LASTEXITCODE"
+            }
+            $plan = (& $binary plan --json --provider codex | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0 -or $plan.schema_version -ne 1 -or $plan.command -ne "plan" -or
+                $plan.exit_code -ne 0 -or [string]::IsNullOrEmpty($plan.catalog_version)) {
+              throw "Plan smoke contract failed"
+            }
+            $status = (& $binary status --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 0 -or $status.exit_code -ne 0 -or
+                $status.data.catalog_sha256 -notmatch '^[0-9a-f]{64}$') {
+              throw "Status smoke contract failed"
+            }
+          } finally {
+            Pop-Location
+            $env:HOME = $originalHome
+            $env:USERPROFILE = $originalUserProfile
+            $env:PATH = $originalPath
+          }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-${{ matrix.target }}
@@ -292,7 +375,9 @@ jobs:
           rm -f target/distrib/*-dist-manifest.json
           test "$(find target/distrib -maxdepth 1 -type f -name '*unknown-linux-musl.tar.xz' | wc -l)" -eq 2
           test "$(find target/distrib -maxdepth 1 -type f -name '*apple-darwin.tar.xz' | wc -l)" -eq 2
+          test "$(find target/distrib -maxdepth 1 -type f -name '*pc-windows-msvc.zip' | wc -l)" -eq 1
           test "$(find target/distrib -maxdepth 1 -type f -name '*installer.sh' | wc -l)" -eq 1
+          test "$(find target/distrib -maxdepth 1 -type f -name '*installer.ps1' | wc -l)" -eq 1
           test -s target/distrib/sha256.sum
           for target in \
             x86_64-unknown-linux-musl \
@@ -303,8 +388,13 @@ jobs:
             test -n "$archive"
             grep -F "$(basename "$archive")" target/distrib/sha256.sum >/dev/null
           done
-          installer="$(find target/distrib -maxdepth 1 -type f -name '*installer.sh' -print -quit)"
-          grep -F "$(basename "$installer")" target/distrib/sha256.sum >/dev/null
+          windows_archive="$(find target/distrib -maxdepth 1 -type f -name '*-x86_64-pc-windows-msvc.zip' -print -quit)"
+          test -n "$windows_archive"
+          grep -F "$(basename "$windows_archive")" target/distrib/sha256.sum >/dev/null
+          for pattern in '*installer.sh' '*installer.ps1'; do
+            installer="$(find target/distrib -maxdepth 1 -type f -name "$pattern" -print -quit)"
+            grep -F "$(basename "$installer")" target/distrib/sha256.sum >/dev/null
+          done
           (cd target/distrib && sha256sum --check --strict sha256.sum)
       - name: Attest every release artifact
         id: attest
