@@ -152,15 +152,22 @@ pub(crate) fn normalize_absolute(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
+#[cfg(unix)]
 pub(crate) fn effective_file_mode(mode: u32) -> u32 {
-    if cfg!(windows) {
-        let _ = mode;
-        0o644
-    } else {
-        mode
-    }
+    mode
 }
 
+#[cfg(windows)]
+pub(crate) fn effective_file_mode(_mode: u32) -> u32 {
+    0o644
+}
+
+#[cfg(unix)]
 pub(crate) fn effective_directory_mode(mode: u32) -> u32 {
-    if cfg!(windows) { 0o755 } else { mode }
+    mode
+}
+
+#[cfg(windows)]
+pub(crate) fn effective_directory_mode(_mode: u32) -> u32 {
+    0o755
 }
