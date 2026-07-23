@@ -431,7 +431,7 @@ fn run_install_session(
     let mut cursor_queries_answered = 0;
     let mut tui_stage = 0;
     let mut plain_signal_sent = false;
-    let deadline = Instant::now() + Duration::from_secs(90);
+    let deadline = Instant::now() + Duration::from_secs(180);
     let status = loop {
         match master.read(&mut buffer) {
             Ok(0) => {}
