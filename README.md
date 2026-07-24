@@ -68,13 +68,23 @@ if ($Observed -ne $Expected) { throw "Installer checksum mismatch" }
 & .\arthur-skills-installer.ps1
 ```
 
-The command surface is `plan`, `install`, `status`, `doctor`, `update`, `uninstall`, `adopt`, and `recover`. Start by reviewing the immutable plan, then apply the same provider selection:
+The installation command surface is `plan`, `install`, `status`, `doctor`, `update`, `uninstall`, `adopt`, and `recover`. Start by reviewing the immutable plan, then apply the same provider selection:
 
 ```bash
 arthur-skills plan --provider claude --provider codex
 arthur-skills install --provider claude --provider codex
 arthur-skills doctor
 ```
+
+Repository maintainers can inspect and synchronize the vendored third-party skills without changing an installed workflow:
+
+```bash
+arthur-skills upstream check
+arthur-skills upstream sync --dry-run
+arthur-skills upstream sync --yes
+```
+
+[`upstreams.toml`](upstreams.toml) records each canonical repository, tracked branch, and skill path. [`upstreams.lock.json`](upstreams.lock.json) pins the imported source revision, Git tree, and vendored content hash. The updater clones each repository once into staging, blocks on local drift or removed upstream paths, and replaces only clean pinned snapshots. The regular `update` command remains offline and reconciles installations exclusively to the catalog embedded in the current binary.
 
 Interactive terminals use Ratatui in an inline viewport. `--plain`, `ARTHUR_SKILLS_PLAIN=1`, or `TERM=dumb` selects the keyboard-driven line renderer. Redirected streams and `CI=true` never prompt; pass explicit `--provider` values and `--yes` for mutations. `--json` emits one schema-v1 envelope and never initializes Ratatui. `NO_COLOR` disables color without changing the interaction mode.
 

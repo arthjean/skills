@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "better-auth/skills",
+      "revision": "17dfe3a1da1c3982de723098ba1015d67f35694c",
+      "skills": [
+        {
+          "name": "better-auth-best-practices",
+          "tree_sha1": "2ab82b0b744f426903e321f4abcf0440c6e201ca",
+          "content_sha256": "90ab30ce5bb67912cbaf17a864e716a52c8035ac1ed50c1b9f54698dd01e1ad5"
+        },
+        {
+          "name": "better-auth-security-best-practices",
+          "tree_sha1": "7cd035c1dd03aafc236ea43492d31ca3306b7ab6",
+          "content_sha256": "3554c47ce1fac9c0e5f700c338d8ca61bd9bb19a7b3b337ba87b293e99ec04b6"
+        },
+        {
+          "name": "create-auth",
+          "tree_sha1": "05ce3d9f5b7fcf20379dacc66afdfcd8f1c5cfbc",
+          "content_sha256": "b04bdc3fbf96107af11093ff6e45d4c48b398760308f35ca3cd5235d4b54ffb1"
+        },
+        {
+          "name": "email-and-password-best-practices",
+          "tree_sha1": "9da895cd339e3eda0ba6d1b8d2b54e24799b1992",
+          "content_sha256": "5afb88a9295841e23421857a240252854898bd1f7e5be3b0fd12ddb4f0464a3a"
+        },
+        {
+          "name": "organization-best-practices",
+          "tree_sha1": "f003068406f2dda78bbbebbd7446576c2baa276c",
+          "content_sha256": "07e20783165ffdf7fe8cbf850196e64d80d0011e7ca51ac030f820a6cfe9c833"
+        },
+        {
+          "name": "two-factor-authentication-best-practices",
+          "tree_sha1": "d6deb736c46a34eca259b65c646f988b60a1ff85",
+          "content_sha256": "186d9671af89145f53767aac4281f154e6e7f367a4792a7ad75348bae7b5a85d"
+        }
+      ]
+    },
+    {
+      "id": "cursor/plugins",
+      "revision": "04166ac89136d36de2a87f24429e6cc307594953",
+      "skills": [
+        {
+          "name": "thermo-nuclear-code-quality-review",
+          "tree_sha1": "d9c8935dd560b3b6f5941247d04a1843f8c7cc35",
+          "content_sha256": "8719952ec0bc691163ac29266296ff9f1d99baa8e99a6bd0db3dfdc61e73930f"
+        }
+      ]
+    },
+    {
+      "id": "ibelick/ui-skills",
+      "revision": "ae74b58e722abe7ddf5948e07dd220808acce8a9",
+      "skills": [
+        {
+          "name": "baseline-ui",
+          "tree_sha1": "e7c069cfe930e7a5fe4d6fe3314d5daefd5b7ebb",
+          "content_sha256": "be603be65095244798852920e5bd74b5a8402d52a89dab37d98ece3d239802c8"
+        },
+        {
+          "name": "ui-skills-root",
+          "tree_sha1": "c69abe581f52417464d79446834e348adffb14fb",
+          "content_sha256": "82d04e1f58ae28c8f87cb55a4482da8e326c0744b15719db24fc8d4b1f7db55a"
+        }
+      ]
+    },
+    {
+      "id": "jakubkrehel/skills",
+      "revision": "f8a1574b08319685705a82e3c28139d1c935af9e",
+      "skills": [
+        {
+          "name": "better-colors",
+          "tree_sha1": "78717951629ce065b2bd8357374a7ff2f15bd363",
+          "content_sha256": "04ecaa8e8fb406dd500f39233cc2a7b499b41dbcf008eee2f77825488c74a420"
+        },
+        {
+          "name": "better-typography",
+          "tree_sha1": "3c3b20e326e6f95b0e4376acf8369206c43d6d1a",
+          "content_sha256": "d534a4b2e0eddd6976a27df9d559259bed1735c76d9816905715b726c58fd692"
+        },
+        {
+          "name": "better-ui",
+          "tree_sha1": "c85dfe0d2c5d1fa599c88e54cef7ae9495862a04",
+          "content_sha256": "219931dacf3b9b9b7e05f38fb08b5b860fca907f1d7a8b28d0e96bcf5ede69de"
+        }
+      ]
+    },
+    {
+      "id": "jakubkrehel/make-interfaces-feel-better",
+      "revision": "384562064fcdd99778fcbafd8729626fe6aab02f",
+      "skills": [
+        {
+          "name": "make-interfaces-feel-better",
+          "tree_sha1": "320672d06e899682d8923286d864efe3719d9c77",
+          "content_sha256": "8af4483a253d5e7077225ed6791b0e1ce2e4646724645e3829221ab9dd81ce2a"
+        }
+      ]
+    },
+    {
+      "id": "jakubkrehel/oklch-skill",
+      "revision": "fd37e17ae4991c42851a65a72dd105f16eb611e1",
+      "skills": [
+        {
+          "name": "oklch-skill",
+          "tree_sha1": "9831d14b4bf20f3267370470cc0912ca47798143",
+          "content_sha256": "56009450ee41617d73ba73608aa40477db2ba7f1cb1860c211e0808970bc6735"
+        }
+      ]
+    },
+    {
+      "id": "mattpocock/skills",
+      "revision": "cdec9f6eb24dbfe606e3ad9b3eb457ba09210b85",
+      "skills": [
+        {
+          "name": "code-review",
+          "tree_sha1": "9df6fdac9c49f20944411ee45e1582e718d9a657",
+          "content_sha256": "4ac34ae6c04c0e25e32dfe0055596476af75f89ff18960512de7d911905e5b24"
+        },
+        {
+          "name": "codebase-design",
+          "tree_sha1": "c5dfc023e5ae146a4ceb9c509024f6ffe13db4a3",
+          "content_sha256": "94556d9e1045ab5c29fd1a8a247a177a45149b889ea755756a56e7efd1eea268"
+        },
+        {
+          "name": "diagnosing-bugs",
+          "tree_sha1": "0ecacff09e31245c34727abe7cb7cff71f615a35",
+          "content_sha256": "8b7e8d103564c3ff69170e1efbd139a05907487e0533a4785affbaf258a8f618"
+        },
+        {
+          "name": "domain-modeling",
+          "tree_sha1": "028a0e44b23909cbdd715aa00546d5c1c46ae4d6",
+          "content_sha256": "5f1300c863b304e4efb8f27d43f941b35c8299ca1f015730b63175d4d427915a"
+        },
+        {
+          "name": "grill-me",
+          "tree_sha1": "8320e7b87f7b208f50ce165b1dd43d1e93c8e801",
+          "content_sha256": "d263fe870be55dcb5ff1788d8ad95c479228462deddf405edd6f84440d6ec826"
+        },
+        {
+          "name": "grill-with-docs",
+          "tree_sha1": "21adba95de7d93065d9fec725ddf37f871e01d05",
+          "content_sha256": "6124fa07d752ea2cb3e8c964417b423daf9cad25782c98217d9f80b021f814d7"
+        },
+        {
+          "name": "grilling",
+          "tree_sha1": "0ace40ac10f5c0b1534324e4e109ebfa831fb361",
+          "content_sha256": "043bdd417d907cefe3af3769db9ae211049d3210ad846013c41d1582fde16266"
+        },
+        {
+          "name": "handoff",
+          "tree_sha1": "3f7df8e717e41dfd6eacd03d47319a2e01248ffb",
+          "content_sha256": "159995bbd894a01ab6b1c2c0d3e20c4c119352476d454320e51aa74705e1e402"
+        },
+        {
+          "name": "implement",
+          "tree_sha1": "aa65990650368f020166bc28d6c05b5b34592c97",
+          "content_sha256": "0a270147b85e175cfabe4915f2b38972fe752c6ab8f4fba4e08ddaa0238e4bc1"
+        },
+        {
+          "name": "improve-codebase-architecture",
+          "tree_sha1": "e5beae48471adf87c513b5cbcb0ca347467546da",
+          "content_sha256": "5382b991f8f782bf54af224acb27c4a243776a05109cdbcca2884358fff38d00"
+        },
+        {
+          "name": "research",
+          "tree_sha1": "06c848c1a1f3ae7afd88f040f73a8f3efee3494d",
+          "content_sha256": "3465d774207f8e5510fc855961ef25e214f3c31aa9970c763796657472de11f0"
+        },
+        {
+          "name": "wayfinder",
+          "tree_sha1": "83a96a4454c069148d8648fd21ca62a58ac15db2",
+          "content_sha256": "74c480cfd0a49eb061f73515eb7f3e15174cb51fe8003ffab003f4d1dd5046d2"
+        },
+        {
+          "name": "writing-great-skills",
+          "tree_sha1": "c84411b360fad91b8756e60fa17fd5b5761422dd",
+          "content_sha256": "5573d13ff1dfecaddc56c5466930c002c11dbabef4381ee440c1525722d118f9"
+        }
+      ]
+    },
+    {
+      "id": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "revision": "12b486b22e67f5d887962ef8351c1ac863bfaeb9",
+      "skills": [
+        {
+          "name": "ui-ux-pro-max",
+          "tree_sha1": "37bb3804d0aeac9f08c0408d791b7abbb6ff8bdc",
+          "content_sha256": "ffa4d50b0b1a1a466218464b58a7b44519b1f5b018955a644c5805ed1fa9a71d"
+        }
+      ]
+    },
+    {
+      "id": "remotion-dev/skills",
+      "revision": "8dad6ec5c5c7cedee4d2aa620bb68386f8fe8eb9",
+      "skills": [
+        {
+          "name": "remotion-best-practices",
+          "tree_sha1": "6ba691f85c4691e9ba931cf328626b35bba88603",
+          "content_sha256": "b24beb61ed7ebecc0ead3dd837f96691d4f7881ea2366b5369f3fe95cc15609b"
+        }
+      ]
+    },
+    {
+      "id": "vercel-labs/skills",
+      "revision": "0b8fb22aaa7f82447d4befe1b6a95d30a5b279b8",
+      "skills": [
+        {
+          "name": "find-skills",
+          "tree_sha1": "3013fdeb8a11b10b1eb795ec3ae8bfca38f7c26d",
+          "content_sha256": "c4a0130bb87d32d4e218c134dfb0cfe9c0ffb5a7e32a8430fb3ae8391fec738d"
+        }
+      ]
+    },
+    {
+      "id": "cosscom/coss",
+      "revision": "aa2636c4102c433789643ebbadbf862116d8ffd5",
+      "skills": [
+        {
+          "name": "coss",
+          "tree_sha1": "aa837f955946992b239d60ad26105607408cd5e7",
+          "content_sha256": "4efaf384c9e284bd048d9741784bce4065e3eba1c72d97fc278688d2f977a71a"
+        },
+        {
+          "name": "coss-particles",
+          "tree_sha1": "bc23ef6d31dfca6919f91ee36e9e94576f2768ac",
+          "content_sha256": "48e5b97a466ce60529ef2c8c89db2adb345782b12459dff49b31afa008ea411a"
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,8 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 signal-hook.workspace = true
+tempfile.workspace = true
+toml.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 atomicwrites.workspace = true
@@ -32,8 +34,6 @@ toml.workspace = true
 
 [dev-dependencies]
 nix = { version = "0.30", features = ["fs", "term"] }
-tempfile = "3.23"
-toml.workspace = true
 
 [lints]
 workspace = true

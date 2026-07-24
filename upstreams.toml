@@ -1,0 +1,184 @@
+schema_version = 1
+
+[[source]]
+id = "better-auth/skills"
+repository = "https://github.com/better-auth/skills.git"
+track = "main"
+
+[[source.skill]]
+name = "better-auth-best-practices"
+path = "better-auth/best-practices"
+
+[[source.skill]]
+name = "better-auth-security-best-practices"
+path = "security"
+
+[[source.skill]]
+name = "create-auth"
+path = "better-auth/create-auth"
+
+[[source.skill]]
+name = "email-and-password-best-practices"
+path = "better-auth/emailAndPassword"
+
+[[source.skill]]
+name = "organization-best-practices"
+path = "better-auth/organization"
+
+[[source.skill]]
+name = "two-factor-authentication-best-practices"
+path = "better-auth/twoFactor"
+
+[[source]]
+id = "cursor/plugins"
+repository = "https://github.com/cursor/plugins.git"
+track = "main"
+
+[[source.skill]]
+name = "thermo-nuclear-code-quality-review"
+path = "cursor-team-kit/skills/thermo-nuclear-code-quality-review"
+
+[[source]]
+id = "ibelick/ui-skills"
+repository = "https://github.com/ibelick/ui-skills.git"
+track = "main"
+
+[[source.skill]]
+name = "baseline-ui"
+path = "skills/baseline-ui"
+
+[[source.skill]]
+name = "ui-skills-root"
+path = "skills/ui-skills-root"
+
+[[source]]
+id = "jakubkrehel/skills"
+repository = "https://github.com/jakubkrehel/skills.git"
+track = "main"
+
+[[source.skill]]
+name = "better-colors"
+path = "skills/better-colors"
+
+[[source.skill]]
+name = "better-typography"
+path = "skills/better-typography"
+
+[[source.skill]]
+name = "better-ui"
+path = "skills/better-ui"
+
+[[source]]
+id = "jakubkrehel/make-interfaces-feel-better"
+repository = "https://github.com/jakubkrehel/make-interfaces-feel-better.git"
+track = "main"
+
+[[source.skill]]
+name = "make-interfaces-feel-better"
+path = "skills/make-interfaces-feel-better"
+
+[[source]]
+id = "jakubkrehel/oklch-skill"
+repository = "https://github.com/jakubkrehel/oklch-skill.git"
+track = "main"
+
+[[source.skill]]
+name = "oklch-skill"
+path = "skills/oklch-skill"
+
+[[source]]
+id = "mattpocock/skills"
+repository = "https://github.com/mattpocock/skills.git"
+track = "main"
+
+[[source.skill]]
+name = "code-review"
+path = "skills/engineering/code-review"
+
+[[source.skill]]
+name = "codebase-design"
+path = "skills/engineering/codebase-design"
+
+[[source.skill]]
+name = "diagnosing-bugs"
+path = "skills/engineering/diagnosing-bugs"
+
+[[source.skill]]
+name = "domain-modeling"
+path = "skills/engineering/domain-modeling"
+
+[[source.skill]]
+name = "grill-me"
+path = "skills/productivity/grill-me"
+
+[[source.skill]]
+name = "grill-with-docs"
+path = "skills/engineering/grill-with-docs"
+
+[[source.skill]]
+name = "grilling"
+path = "skills/productivity/grilling"
+
+[[source.skill]]
+name = "handoff"
+path = "skills/productivity/handoff"
+
+[[source.skill]]
+name = "implement"
+path = "skills/engineering/implement"
+
+[[source.skill]]
+name = "improve-codebase-architecture"
+path = "skills/engineering/improve-codebase-architecture"
+
+[[source.skill]]
+name = "research"
+path = "skills/engineering/research"
+
+[[source.skill]]
+name = "wayfinder"
+path = "skills/engineering/wayfinder"
+
+[[source.skill]]
+name = "writing-great-skills"
+path = "skills/productivity/writing-great-skills"
+
+[[source]]
+id = "nextlevelbuilder/ui-ux-pro-max-skill"
+repository = "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git"
+track = "main"
+
+[[source.skill]]
+name = "ui-ux-pro-max"
+path = ".claude/skills/ui-ux-pro-max"
+
+[[source]]
+id = "remotion-dev/skills"
+repository = "https://github.com/remotion-dev/skills.git"
+track = "main"
+
+[[source.skill]]
+name = "remotion-best-practices"
+path = "skills/remotion-best-practices"
+
+[[source]]
+id = "vercel-labs/skills"
+repository = "https://github.com/vercel-labs/skills.git"
+track = "main"
+
+[[source.skill]]
+name = "find-skills"
+path = "skills/find-skills"
+
+[[source]]
+id = "cosscom/coss"
+repository = "https://github.com/cosscom/coss.git"
+track = "main"
+
+[[source.skill]]
+name = "coss"
+path = "apps/ui/skills/coss"
+
+[[source.skill]]
+name = "coss-particles"
+path = "apps/ui/skills/coss-particles"

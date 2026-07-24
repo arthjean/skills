@@ -43,6 +43,8 @@ pub enum Command {
     Adopt(MutationArgs),
     /// Resume rollback or cleanup from the durable transaction journal.
     Recover,
+    /// Inspect or synchronize repository-owned snapshots of third-party skills.
+    Upstream(UpstreamArgs),
 }
 
 impl Command {
@@ -56,8 +58,34 @@ impl Command {
             Self::Uninstall(_) => "uninstall",
             Self::Adopt(_) => "adopt",
             Self::Recover => "recover",
+            Self::Upstream(_) => "upstream",
         }
     }
+}
+
+#[derive(Args, Debug)]
+pub struct UpstreamArgs {
+    #[command(subcommand)]
+    pub command: UpstreamCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UpstreamCommand {
+    /// Compare vendored skills with their tracked upstream branches.
+    Check,
+    /// Replace clean vendored snapshots with validated upstream versions.
+    Sync(UpstreamSyncArgs),
+}
+
+#[derive(Args, Debug, Default)]
+pub struct UpstreamSyncArgs {
+    /// Apply every safe upstream update without prompting.
+    #[arg(long)]
+    pub yes: bool,
+
+    /// Inspect and render the synchronization plan without changing the repository.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, ValueEnum)]
@@ -137,7 +165,7 @@ pub fn json_requested(args: &[OsString]) -> bool {
 }
 
 pub fn command_before_separator(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 8] = [
+    const COMMANDS: [&str; 9] = [
         "plan",
         "install",
         "status",
@@ -146,6 +174,7 @@ pub fn command_before_separator(args: &[OsString]) -> Option<&'static str> {
         "uninstall",
         "adopt",
         "recover",
+        "upstream",
     ];
     for argument in args
         .iter()
@@ -178,7 +207,7 @@ mod tests {
 
     use clap::{CommandFactory, Parser};
 
-    use super::{Cli, Command, command_before_separator, json_requested};
+    use super::{Cli, Command, UpstreamCommand, command_before_separator, json_requested};
 
     #[test]
     fn clap_contract_is_valid_and_exposes_all_commands() {
@@ -193,6 +222,7 @@ mod tests {
             "uninstall",
             "adopt",
             "recover",
+            "upstream",
         ] {
             assert!(help.contains(command));
         }
@@ -219,6 +249,22 @@ mod tests {
         assert_eq!(arguments.providers.providers().len(), 2);
         assert!(arguments.confirmation.yes);
         assert!(arguments.confirmation.dry_run);
+    }
+
+    #[test]
+    fn parses_upstream_sync_contract() {
+        let parsed = Cli::try_parse_from(["arthur-skills", "--json", "upstream", "sync", "--yes"]);
+        let Ok(cli) = parsed else {
+            panic!("valid upstream command was rejected");
+        };
+        let Some(Command::Upstream(arguments)) = cli.command else {
+            panic!("upstream command was not resolved");
+        };
+        let UpstreamCommand::Sync(sync) = arguments.command else {
+            panic!("upstream sync command was not resolved");
+        };
+        assert!(sync.yes);
+        assert!(!sync.dry_run);
     }
 
     #[test]

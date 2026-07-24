@@ -116,6 +116,28 @@ fn help_documents_commands_modes_and_applicable_flags() -> TestResult {
 }
 
 #[test]
+fn upstream_commands_fail_closed_outside_the_source_repository() -> TestResult {
+    let workspace = tempfile::tempdir()?;
+    let output = Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
+        .args(["--json", "upstream", "sync"])
+        .current_dir(workspace.path())
+        .env("HOME", workspace.path())
+        .output()?;
+    let envelope = json_output(&output)?;
+    assert!(!output.status.success());
+    assert_eq!(
+        envelope["diagnostics"][0]["code"],
+        "upstream_configuration_invalid"
+    );
+    assert!(
+        envelope["diagnostics"][0]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("upstreams.toml was not found"))
+    );
+    Ok(())
+}
+
+#[test]
 fn json_governs_help_version_usage_and_contradictory_modes() -> TestResult {
     let home = tempfile::tempdir()?;
     let help = run(home.path(), &["--json", "--help"])?;

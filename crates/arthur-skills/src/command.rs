@@ -109,6 +109,7 @@ pub fn execute(cli: &Cli) -> Envelope {
             run_adopt(&catalog, cli, arguments, presentation, &signals)
         }
         Some(Command::Recover) => run_recover(&catalog, &signals),
+        Some(Command::Upstream(arguments)) => crate::upstream::execute(arguments),
     };
     if cli.command.is_none() {
         envelope.command = None;

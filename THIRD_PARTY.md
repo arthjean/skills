@@ -6,6 +6,7 @@ This repository bundles skills from several upstream projects. Those files retai
 | --- | --- |
 | [better-auth/skills](https://github.com/better-auth/skills) | `better-auth-best-practices`, `better-auth-security-best-practices`, `create-auth`, `email-and-password-best-practices`, `organization-best-practices`, `two-factor-authentication-best-practices` |
 | [cursor/plugins](https://github.com/cursor/plugins) | `thermo-nuclear-code-quality-review` |
+| [cosscom/coss](https://github.com/cosscom/coss) | `coss`, `coss-particles` |
 | [ibelick/ui-skills](https://github.com/ibelick/ui-skills) | `baseline-ui`, `ui-skills-root` |
 | [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | `better-colors`, `better-typography`, `better-ui` |
 | [jakubkrehel/make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better) | `make-interfaces-feel-better` |

@@ -19,6 +19,7 @@ pub mod provider_health;
 pub mod receipt;
 pub mod transaction;
 pub mod ui;
+pub mod upstream;
 pub mod workflow;
 
 use std::ffi::OsStr;

@@ -229,6 +229,9 @@ fn write_human_with_detail(
     output: &mut impl Write,
     detailed: bool,
 ) -> io::Result<()> {
+    if envelope.data.get("kind").and_then(Value::as_str) == Some("upstream") {
+        return write_upstream(envelope, output);
+    }
     if envelope.data.get("result").and_then(Value::as_str) == Some("already_current")
         && let Some(message) = envelope.data.get("message").and_then(Value::as_str)
     {
@@ -280,6 +283,61 @@ fn write_human_with_detail(
             Value::String(value) => writeln!(output, "{value}")?,
             value => writeln!(output, "{value}")?,
         }
+    }
+    for diagnostic in &envelope.diagnostics {
+        writeln!(output, "{}: {}", diagnostic.code, diagnostic.message)?;
+    }
+    Ok(())
+}
+
+fn write_upstream(envelope: &Envelope, output: &mut impl Write) -> io::Result<()> {
+    let action = envelope
+        .data
+        .get("action")
+        .and_then(Value::as_str)
+        .unwrap_or("check");
+    let sources = envelope
+        .data
+        .get("sources")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let skills = envelope.data.get("skills").and_then(Value::as_array);
+    let skill_count = skills.map_or(0, |items| items.len());
+    writeln!(output, "Upstream {action}")?;
+    writeln!(output, "Sources {sources}  · Skills {skill_count}")?;
+
+    if let Some(skills) = skills {
+        for skill in skills {
+            let state = skill
+                .get("state")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            if state == "current" {
+                continue;
+            }
+            let name = skill
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("<unknown>");
+            let source = skill
+                .get("source")
+                .and_then(Value::as_str)
+                .unwrap_or("<unknown>");
+            writeln!(output, "{state}  {name}  ({source})")?;
+        }
+    }
+    if envelope.data.get("result").and_then(Value::as_str) == Some("synced") {
+        let applied = envelope
+            .data
+            .get("applied")
+            .and_then(Value::as_array)
+            .map_or(0, |items| items.len());
+        writeln!(output, "Applied {applied} upstream updates.")?;
+    } else if envelope.status == OutputStatus::Noop {
+        writeln!(
+            output,
+            "Every vendored skill matches its pinned upstream tree."
+        )?;
     }
     for diagnostic in &envelope.diagnostics {
         writeln!(output, "{}: {}", diagnostic.code, diagnostic.message)?;
@@ -465,6 +523,48 @@ mod tests {
         assert_eq!(
             String::from_utf8_lossy(&output),
             "Done\n  13 updated  · 513 unchanged\n  Note  Codex reads shared skills directly.\n"
+        );
+    }
+
+    #[test]
+    fn upstream_human_output_lists_changes_and_results() {
+        let mut envelope = Envelope::new(Some("upstream"));
+        envelope.data = serde_json::json!({
+            "kind": "upstream",
+            "action": "check",
+            "sources": 1,
+            "skills": [
+                { "name": "alpha", "source": "owner/repository", "state": "current" },
+                {
+                    "name": "beta",
+                    "source": "owner/repository",
+                    "state": "update_available"
+                }
+            ],
+            "result": null,
+            "applied": []
+        });
+        let mut output = Vec::new();
+        assert!(write_human(&envelope, &mut output).is_ok());
+        let output = String::from_utf8_lossy(&output);
+        assert!(output.contains("Upstream check"));
+        assert!(output.contains("Sources 1  · Skills 2"));
+        assert!(output.contains("update_available  beta  (owner/repository)"));
+        assert!(!output.contains("alpha"));
+
+        envelope.data["result"] = Value::String("synced".to_owned());
+        envelope.data["applied"] = serde_json::json!(["beta"]);
+        let mut output = Vec::new();
+        assert!(write_human(&envelope, &mut output).is_ok());
+        assert!(String::from_utf8_lossy(&output).contains("Applied 1 upstream updates."));
+
+        envelope.status = OutputStatus::Noop;
+        envelope.data["result"] = Value::Null;
+        let mut output = Vec::new();
+        assert!(write_human(&envelope, &mut output).is_ok());
+        assert!(
+            String::from_utf8_lossy(&output)
+                .contains("Every vendored skill matches its pinned upstream tree.")
         );
     }
 
