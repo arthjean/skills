@@ -12,7 +12,11 @@ use ratatui::widgets::{Paragraph, Widget, Wrap};
 use ratatui::{Frame, TerminalOptions, Viewport};
 
 use crate::app::{Action, App, Outcome, Provider, Step};
-use crate::output::{Envelope, OutputSeverity, compact_summary};
+use crate::output::{
+    AssetChange, Envelope, OutputSeverity, asset_changes, compact_summary, completed_action_label,
+    pending_action_label,
+};
+use crate::plan::PlanAction;
 use crate::transaction::{SIGINT_EXIT_CODE, SignalFlags};
 use crate::workflow::{AssetSummary, WorkflowState};
 
@@ -242,6 +246,12 @@ fn render_success(frame: &mut Frame<'_>, envelope: &Envelope, colors: bool) {
 }
 
 fn render_success_state(frame: &mut Frame<'_>, envelope: &Envelope, colors: bool) {
+    let changes = asset_changes(
+        envelope
+            .operations
+            .iter()
+            .map(|operation| (operation.action, operation.source.as_str())),
+    );
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(TEXT_HEADER_HEIGHT),
         Constraint::Min(9),
@@ -258,14 +268,22 @@ fn render_success_state(frame: &mut Frame<'_>, envelope: &Envelope, colors: bool
     render_text_header(
         frame,
         header,
-        "✓ Everything is up to date",
-        "All managed skills and agents match the desired state.",
+        if changes.is_empty() {
+            "✓ Everything is up to date"
+        } else {
+            "✓ Update complete"
+        },
+        "All managed skills and agents now match the desired state.",
         success_style,
     );
     let mut lines = Vec::new();
     let summary = compact_summary(envelope);
     if !summary.is_empty() {
         lines.push(Line::from(format!("    {}", summary.join("  · "))));
+    }
+    if !changes.is_empty() {
+        lines.push(Line::from(""));
+        lines.extend(change_lines(&changes, 5, colors, true, "    "));
     }
     for diagnostic in &envelope.diagnostics {
         let label = match diagnostic.severity {
@@ -610,6 +628,17 @@ fn review_text(app: &App, colors: bool) -> Text<'static> {
                 assessment.legacy_skills_to_import, assessment.legacy_skills_to_clean
             )));
         }
+        let changes = asset_changes(
+            review
+                .groups
+                .values()
+                .flatten()
+                .map(|entry| (entry.action, entry.source.as_str())),
+        );
+        if !changes.is_empty() {
+            lines.push(Line::from(""));
+            lines.extend(change_lines(&changes, 3, colors, false, ""));
+        }
         lines.push(Line::from(""));
         lines.push(Line::styled(
             workflow_explanation(assessment.state),
@@ -652,6 +681,59 @@ fn review_text(app: &App, colors: bool) -> Text<'static> {
         lines.push(Line::from(format!("Notice: {}", notice.message)));
     }
     Text::from(lines)
+}
+
+fn change_lines(
+    changes: &[AssetChange],
+    limit: usize,
+    colors: bool,
+    completed: bool,
+    indent: &str,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::styled(
+        format!("{indent}Changes"),
+        Style::default().add_modifier(Modifier::BOLD),
+    )];
+    for change in changes.iter().take(limit) {
+        let action = if completed {
+            completed_action_label(change.action)
+        } else {
+            pending_action_label(change.action)
+        };
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{indent}  {action:<9}"),
+                change_action_style(change.action, colors),
+            ),
+            Span::raw(change.label.clone()),
+        ]));
+    }
+    if changes.len() > limit {
+        lines.push(Line::styled(
+            format!(
+                "{indent}  ... {} more; use --plain for the complete list",
+                changes.len() - limit
+            ),
+            secondary_style(),
+        ));
+    }
+    lines
+}
+
+fn change_action_style(action: PlanAction, colors: bool) -> Style {
+    if !colors {
+        return Style::default().add_modifier(Modifier::BOLD);
+    }
+    let color = match action {
+        PlanAction::Create => Color::Green,
+        PlanAction::Update | PlanAction::Adoptable | PlanAction::RetainedUnmanaged => Color::Yellow,
+        PlanAction::Remove
+        | PlanAction::Drifted
+        | PlanAction::Conflict
+        | PlanAction::RecoveryRequired => Color::Red,
+        PlanAction::Noop => Color::Green,
+    };
+    Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
 fn summary_line(label: &str, summary: AssetSummary, colors: bool) -> Line<'static> {
@@ -713,7 +795,7 @@ mod tests {
     use super::{action_for_event, render, render_success, review_text};
     use crate::app::{Action, App, Provider, Review};
     use crate::lifecycle::{LifecycleNotice, LifecycleNoticeCode};
-    use crate::output::{Envelope, OutputDiagnostic, OutputSeverity};
+    use crate::output::{Envelope, OutputDiagnostic, OutputOperation, OutputSeverity};
     use crate::plan::{Owner, Plan, PlanAction, PlanEntry};
     use crate::provider::resolve_roots_from;
     use crate::workflow::{AssetSummary, WorkflowAssessment, WorkflowState};
@@ -752,6 +834,14 @@ mod tests {
         let mut envelope = Envelope::new(Some("install"));
         envelope.summary.insert("noop".to_owned(), 513);
         envelope.summary.insert("update".to_owned(), 13);
+        envelope.operations.push(OutputOperation {
+            action: PlanAction::Update,
+            source: "skills/coss/SKILL.md".to_owned(),
+            destination_utf8: Some("/home/user/.agents/skills/coss/SKILL.md".to_owned()),
+            destination_bytes_hex: None,
+            owner: Owner::ArthurWorkflow,
+            reason: "managed path needs an update".to_owned(),
+        });
         envelope.diagnostics.push(OutputDiagnostic {
             code: "codex_uses_implicit_skills".to_owned(),
             severity: OutputSeverity::Warning,
@@ -771,8 +861,10 @@ mod tests {
             .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(rendered.contains("Everything is up to date"));
+        assert!(rendered.contains("Update complete"));
         assert!(rendered.contains("13 updated  · 513 unchanged"));
+        assert!(rendered.contains("Updated"));
+        assert!(rendered.contains("Skill  coss"));
         assert!(rendered.contains("Note  Codex reads shared skills directly."));
         assert!(rendered.contains("Enter close"));
         assert!(!rendered.contains('⣿'));
@@ -867,7 +959,18 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let mut app = App::with_selection(50, &[Provider::Claude, Provider::Codex]);
         app.set_review(Review {
-            groups: Default::default(),
+            groups: [(
+                ("/home/user/.agents/skills".to_owned(), PlanAction::Update),
+                vec![PlanEntry {
+                    action: PlanAction::Update,
+                    source: "skills/coss/SKILL.md".to_owned(),
+                    destination: "/home/user/.agents/skills/coss/SKILL.md".into(),
+                    owner: Owner::ArthurWorkflow,
+                    reason: "managed path needs an update".to_owned(),
+                }],
+            )]
+            .into_iter()
+            .collect(),
             applicable: true,
             notices: Vec::new(),
             assessment: Some(WorkflowAssessment {
@@ -891,6 +994,7 @@ mod tests {
         let rendered = review_text(&app, false).to_string();
         assert!(rendered.contains("50/50 found  · 5 to align"));
         assert!(rendered.contains("Legacy   42 to import  · 2 to remove"));
+        assert!(rendered.contains("Update   Skill  coss"));
         assert!(!rendered.contains("0 missing"));
         let backend = TestBackend::new(82, 16);
         let mut terminal = Terminal::new(backend)?;

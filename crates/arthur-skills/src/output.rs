@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -75,6 +75,19 @@ pub struct OutputOperation {
     pub reason: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AssetChange {
+    pub action: PlanAction,
+    pub label: String,
+}
+
+#[derive(Debug)]
+struct AggregatedChange {
+    label: String,
+    source_rank: u8,
+    actions: BTreeSet<PlanAction>,
+}
+
 impl From<&PlanEntry> for OutputOperation {
     fn from(entry: &PlanEntry) -> Self {
         let (destination_utf8, destination_bytes_hex) = path_fields(&entry.destination);
@@ -87,6 +100,142 @@ impl From<&PlanEntry> for OutputOperation {
             reason: entry.reason.clone(),
         }
     }
+}
+
+pub(crate) fn asset_changes<'a>(
+    entries: impl IntoIterator<Item = (PlanAction, &'a str)>,
+) -> Vec<AssetChange> {
+    let mut changes = BTreeMap::<String, AggregatedChange>::new();
+    for (action, source) in entries {
+        if action == PlanAction::Noop {
+            continue;
+        }
+        let Some((key, label, source_rank)) = classify_asset(source) else {
+            continue;
+        };
+        let change = changes.entry(key).or_insert_with(|| AggregatedChange {
+            label: label.clone(),
+            source_rank,
+            actions: BTreeSet::new(),
+        });
+        if source_rank > change.source_rank {
+            change.label = label;
+            change.source_rank = source_rank;
+            change.actions.clear();
+        }
+        if source_rank == change.source_rank {
+            change.actions.insert(action);
+        }
+    }
+    changes
+        .into_values()
+        .filter_map(|change| {
+            representative_action(&change.actions).map(|action| AssetChange {
+                action,
+                label: change.label,
+            })
+        })
+        .collect()
+}
+
+pub(crate) const fn pending_action_label(action: PlanAction) -> &'static str {
+    match action {
+        PlanAction::Create => "Restore",
+        PlanAction::Update => "Update",
+        PlanAction::Remove => "Remove",
+        PlanAction::Adoptable => "Adopt",
+        PlanAction::Drifted => "Drift",
+        PlanAction::Conflict => "Conflict",
+        PlanAction::RetainedUnmanaged => "Retain",
+        PlanAction::RecoveryRequired => "Recover",
+        PlanAction::Noop => "Keep",
+    }
+}
+
+pub(crate) const fn completed_action_label(action: PlanAction) -> &'static str {
+    match action {
+        PlanAction::Create => "Restored",
+        PlanAction::Update => "Updated",
+        PlanAction::Remove => "Removed",
+        PlanAction::RetainedUnmanaged => "Retained",
+        _ => pending_action_label(action),
+    }
+}
+
+fn classify_asset(source: &str) -> Option<(String, String, u8)> {
+    let (source, activation) = source
+        .strip_prefix("activation:claude:")
+        .map_or((source, false), |source| (source, true));
+    let source = source.strip_prefix("directory:").unwrap_or(source);
+    if source.starts_with("container:") {
+        return None;
+    }
+    if let Some(path) = source.strip_prefix("skills/") {
+        let name = path.split('/').next().filter(|name| !name.is_empty())?;
+        return Some((
+            format!("skill:{name}"),
+            format!("Skill  {name}"),
+            u8::from(!activation) + 1,
+        ));
+    }
+    if activation {
+        let name = source.split('/').next().filter(|name| !name.is_empty())?;
+        return Some((format!("skill:{name}"), format!("Skill  {name}"), 1));
+    }
+    for (prefix, provider) in [
+        ("agents/claude/", "Claude Code"),
+        ("agents/codex/", "Codex"),
+    ] {
+        if let Some(path) = source.strip_prefix(prefix) {
+            let name = file_stem(path);
+            return Some((
+                format!("agent:{provider}:{path}"),
+                format!("Agent  {name} ({provider})"),
+                2,
+            ));
+        }
+    }
+    if let Some(path) = source.strip_prefix("shared/claude/") {
+        let name = file_stem(path);
+        return Some((
+            format!("support:claude:{path}"),
+            format!("Support  {name} (Claude Code)"),
+            2,
+        ));
+    }
+    Some((format!("asset:{source}"), format!("Asset  {source}"), 2))
+}
+
+fn file_stem(path: &str) -> &str {
+    path.rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .rsplit_once('.')
+        .map_or(path.rsplit('/').next().unwrap_or(path), |(stem, _)| stem)
+}
+
+fn representative_action(actions: &BTreeSet<PlanAction>) -> Option<PlanAction> {
+    for action in [
+        PlanAction::Conflict,
+        PlanAction::RecoveryRequired,
+        PlanAction::Drifted,
+        PlanAction::Adoptable,
+        PlanAction::Update,
+    ] {
+        if actions.contains(&action) {
+            return Some(action);
+        }
+    }
+    if actions.contains(&PlanAction::Create) && actions.contains(&PlanAction::Remove) {
+        return Some(PlanAction::Update);
+    }
+    [
+        PlanAction::Remove,
+        PlanAction::Create,
+        PlanAction::RetainedUnmanaged,
+    ]
+    .into_iter()
+    .find(|action| actions.contains(action))
 }
 
 #[derive(Debug, Serialize)]
@@ -248,6 +397,19 @@ fn write_human_with_detail(
         if !summary.is_empty() {
             writeln!(output, "  {}", summary.join("  · "))?;
         }
+        for change in asset_changes(
+            envelope
+                .operations
+                .iter()
+                .map(|operation| (operation.action, operation.source.as_str())),
+        ) {
+            writeln!(
+                output,
+                "  {:<9} {}",
+                completed_action_label(change.action),
+                change.label
+            )?;
+        }
         for diagnostic in &envelope.diagnostics {
             let label = match diagnostic.severity {
                 OutputSeverity::Info => "Info",
@@ -406,7 +568,8 @@ mod tests {
 
     use super::{
         ENVIRONMENT_EXIT_CODE, Envelope, OutputDiagnostic, OutputOperation, OutputSeverity,
-        OutputStatus, USAGE_EXIT_CODE, path_fields, write_human, write_human_compact, write_json,
+        OutputStatus, USAGE_EXIT_CODE, asset_changes, path_fields, write_human,
+        write_human_compact, write_json,
     };
     use crate::plan::{
         Diagnostic, DiagnosticSeverity, Owner, Plan, PlanAction, PlanEntry, PlannedMutation,
@@ -502,7 +665,7 @@ mod tests {
         envelope.summary.insert("update".to_owned(), 13);
         envelope.operations.push(OutputOperation {
             action: PlanAction::Update,
-            source: "skill:test".to_owned(),
+            source: "skills/test/SKILL.md".to_owned(),
             destination_utf8: Some("/home/user/.agents/skills/test".to_owned()),
             destination_bytes_hex: None,
             owner: Owner::ArthurWorkflow,
@@ -522,8 +685,26 @@ mod tests {
         assert!(write_human_compact(&envelope, &mut output).is_ok());
         assert_eq!(
             String::from_utf8_lossy(&output),
-            "Done\n  13 updated  · 513 unchanged\n  Note  Codex reads shared skills directly.\n"
+            "Done\n  13 updated  · 513 unchanged\n  Updated   Skill  test\n  Note  Codex reads shared skills directly.\n"
         );
+    }
+
+    #[test]
+    fn asset_changes_group_files_and_provider_activations_by_managed_asset() {
+        let changes = asset_changes([
+            (PlanAction::Update, "skills/coss/SKILL.md"),
+            (PlanAction::Create, "directory:skills/coss/references"),
+            (PlanAction::Create, "activation:claude:coss"),
+            (PlanAction::Create, "agents/codex/docs-researcher.toml"),
+            (PlanAction::Create, "container:codex-agents"),
+            (PlanAction::Noop, "skills/current/SKILL.md"),
+        ]);
+
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].action, PlanAction::Create);
+        assert_eq!(changes[0].label, "Agent  docs-researcher (Codex)");
+        assert_eq!(changes[1].action, PlanAction::Update);
+        assert_eq!(changes[1].label, "Skill  coss");
     }
 
     #[test]

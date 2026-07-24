@@ -1,6 +1,7 @@
 use std::io::{self, BufRead, Write};
 
 use crate::app::{Action, App, Outcome, Provider, Step};
+use crate::output::{asset_changes, pending_action_label};
 use crate::transaction::SignalFlags;
 use crate::workflow::WorkflowState;
 
@@ -177,6 +178,24 @@ fn render_review(app: &App, output: &mut impl Write) -> io::Result<()> {
                 assessment.legacy_skills_to_clean
             )?;
         }
+        let changes = asset_changes(
+            review
+                .groups
+                .values()
+                .flatten()
+                .map(|entry| (entry.action, entry.source.as_str())),
+        );
+        if !changes.is_empty() {
+            writeln!(output, "Changes:")?;
+            for change in changes {
+                writeln!(
+                    output,
+                    "  {:<9} {}",
+                    pending_action_label(change.action),
+                    change.label
+                )?;
+            }
+        }
         return Ok(());
     }
     writeln!(output, "Plan review: the complete catalog is included")?;
@@ -221,7 +240,9 @@ mod tests {
 
     use super::{PlainExit, confirm_plan, read_line, render_review, select_providers};
     use crate::app::{App, Provider, Review};
+    use crate::plan::{Owner, PlanAction, PlanEntry};
     use crate::transaction::SignalFlags;
+    use crate::workflow::{AssetSummary, WorkflowAssessment, WorkflowState};
 
     #[test]
     fn plain_selection_is_numbered_line_oriented_and_control_free() {
@@ -318,6 +339,61 @@ mod tests {
             confirm_plan(app, &mut Cursor::new(b"y\n"), &mut Vec::new(), &flags,),
             Ok(PlainExit::Interrupted(143))
         ));
+    }
+
+    #[test]
+    fn workflow_review_lists_every_changed_managed_asset() {
+        let entries = [
+            PlanEntry {
+                action: PlanAction::Update,
+                source: "skills/coss/SKILL.md".to_owned(),
+                destination: "/home/user/.agents/skills/coss/SKILL.md".into(),
+                owner: Owner::ArthurWorkflow,
+                reason: "managed path needs an update".to_owned(),
+            },
+            PlanEntry {
+                action: PlanAction::Create,
+                source: "agents/codex/docs-researcher.toml".to_owned(),
+                destination: "/home/user/.codex/agents/docs-researcher.toml".into(),
+                owner: Owner::ArthurWorkflow,
+                reason: "managed path is missing".to_owned(),
+            },
+        ];
+        let mut app = App::new(1, &[]);
+        app.set_review(Review {
+            groups: [(
+                ("/home/user".to_owned(), PlanAction::Update),
+                entries.into_iter().collect(),
+            )]
+            .into_iter()
+            .collect(),
+            applicable: true,
+            notices: Vec::new(),
+            assessment: Some(WorkflowAssessment {
+                state: WorkflowState::Update,
+                skills: AssetSummary {
+                    total: 1,
+                    found: 1,
+                    missing: 0,
+                    not_aligned: 1,
+                },
+                agents: AssetSummary {
+                    total: 1,
+                    found: 0,
+                    missing: 1,
+                    not_aligned: 0,
+                },
+                legacy_skills_to_import: 0,
+                legacy_skills_to_clean: 0,
+            }),
+        });
+
+        let mut output = Vec::new();
+        assert!(render_review(&app, &mut output).is_ok());
+        let output = String::from_utf8_lossy(&output);
+        assert!(output.contains("Changes:"));
+        assert!(output.contains("Restore   Agent  docs-researcher (Codex)"));
+        assert!(output.contains("Update    Skill  coss"));
     }
 
     #[test]
