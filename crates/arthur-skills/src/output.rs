@@ -465,22 +465,36 @@ fn write_upstream(envelope: &Envelope, output: &mut impl Write) -> io::Result<()
         .unwrap_or(0);
     let skills = envelope.data.get("skills").and_then(Value::as_array);
     let skill_count = skills.map_or(0, |items| items.len());
+    let synced = envelope.data.get("result").and_then(Value::as_str) == Some("synced");
+    let applied = envelope
+        .data
+        .get("applied")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<BTreeSet<_>>();
     writeln!(output, "Upstream {action}")?;
     writeln!(output, "Sources {sources}  · Skills {skill_count}")?;
 
     if let Some(skills) = skills {
         for skill in skills {
-            let state = skill
+            let reported_state = skill
                 .get("state")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            if state == "current" {
-                continue;
-            }
             let name = skill
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or("<unknown>");
+            let state = if synced && applied.contains(name) {
+                "updated"
+            } else {
+                reported_state
+            };
+            if state == "current" {
+                continue;
+            }
             let source = skill
                 .get("source")
                 .and_then(Value::as_str)
@@ -488,13 +502,8 @@ fn write_upstream(envelope: &Envelope, output: &mut impl Write) -> io::Result<()
             writeln!(output, "{state}  {name}  ({source})")?;
         }
     }
-    if envelope.data.get("result").and_then(Value::as_str) == Some("synced") {
-        let applied = envelope
-            .data
-            .get("applied")
-            .and_then(Value::as_array)
-            .map_or(0, |items| items.len());
-        writeln!(output, "Applied {applied} upstream updates.")?;
+    if synced {
+        writeln!(output, "Applied {} upstream updates.", applied.len())?;
     } else if envelope.status == OutputStatus::Noop {
         writeln!(
             output,
@@ -737,7 +746,9 @@ mod tests {
         envelope.data["applied"] = serde_json::json!(["beta"]);
         let mut output = Vec::new();
         assert!(write_human(&envelope, &mut output).is_ok());
-        assert!(String::from_utf8_lossy(&output).contains("Applied 1 upstream updates."));
+        let output = String::from_utf8_lossy(&output);
+        assert!(output.contains("updated  beta  (owner/repository)"));
+        assert!(output.contains("Applied 1 upstream updates."));
 
         envelope.status = OutputStatus::Noop;
         envelope.data["result"] = Value::Null;
