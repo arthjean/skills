@@ -112,6 +112,8 @@ pub fn assess(
         && skills.not_aligned == 0
         && agents.missing == 0
         && agents.not_aligned == 0
+        && legacy_skills_to_import == 0
+        && legacy_skills_to_clean == 0
         && !plan.has_mutations()
     {
         WorkflowState::Current
@@ -200,8 +202,12 @@ fn non_empty(value: &str) -> Option<&str> {
 mod tests {
     use std::path::PathBuf;
 
+    use tempfile::tempdir;
+
     use super::{WorkflowState, assess};
     use crate::plan::{Owner, PLAN_SCHEMA_VERSION, Plan, PlanAction, PlanEntry};
+    use crate::provider::resolve_roots_from;
+    use crate::receipt::Receipt;
 
     fn entry(action: PlanAction, source: &str, reason: &str) -> PlanEntry {
         PlanEntry {
@@ -271,5 +277,29 @@ mod tests {
 
         assert_eq!(assessment.state, WorkflowState::Import);
         assert_eq!(assessment.legacy_skills_to_import, 1);
+    }
+
+    #[test]
+    fn legacy_lock_entries_force_cleanup_for_an_existing_receipt()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let home = tempdir()?;
+        let roots = resolve_roots_from(Some(home.path().as_os_str()), None, &[])?;
+        let receipt = Receipt::new("0.1.0", "a".repeat(64), &roots);
+        let plan = Plan {
+            schema_version: PLAN_SCHEMA_VERSION,
+            applicable: true,
+            entries: vec![entry(
+                PlanAction::Noop,
+                "skills/meta-code/SKILL.md",
+                "managed path already matches",
+            )],
+            operations: Vec::new(),
+            diagnostics: Vec::new(),
+        };
+
+        let assessment = assess(Some(&receipt), &plan, 1, 0);
+
+        assert_eq!(assessment.state, WorkflowState::Update);
+        Ok(())
     }
 }

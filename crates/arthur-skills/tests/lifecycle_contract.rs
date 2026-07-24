@@ -343,6 +343,7 @@ fn import_and_reconciliation_repair_catalog_assets_without_claiming_personal_ass
         &update_roots,
         &installed.receipt,
         &ProviderId::ALL,
+        None,
     )?;
     assert!(updated.plan.applicable);
     assert!(

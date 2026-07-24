@@ -29,6 +29,10 @@ fn inline_terminal_restores_after_success_error_and_panic() -> Result<(), Box<dy
             );
         }
         assert_eq!(result.success, probe == "success", "probe {probe:?}");
+        if probe == "success" {
+            assert!(result.output.contains("\u{1b}[1;1H"));
+            assert!(result.output.contains("\u{1b}[2J"));
+        }
     }
     Ok(())
 }
@@ -108,12 +112,53 @@ fn tui_install_selects_reviews_and_commits_inline() -> Result<(), Box<dyn Error>
     assert_eq!(result.exit_code, Some(0));
     assert!(result.output.contains("Select providers"));
     assert!(result.output.contains("Install Arthur Workflow"));
+    assert!(result.output.contains("Applying "));
+    assert!(result.output.contains("Everything is up to date"));
+    assert!(
+        result
+            .output
+            .contains("All managed skills and agents match the desired state.")
+    );
+    assert!(result.output.contains("Codex reads"));
+    assert!(!result.output.contains("codexusesimplicitskills:"));
+    assert!(!result.output.contains("managed path is missing"));
     assert!(!result.output.contains("\u{1b}[?1049h"));
+    let final_clear = result
+        .output
+        .rfind("\u{1b}[2J")
+        .ok_or("close did not clear the terminal")?;
+    let success_screen = result
+        .output
+        .rfind("All managed skills and agents match the desired state.")
+        .ok_or("success screen is missing")?;
+    assert!(final_clear > success_screen);
     assert!(
         home.path()
             .join(".agents/.arthur-workflow/receipt.json")
             .exists()
     );
+    Ok(())
+}
+
+#[test]
+fn tui_current_close_clears_without_followup_output() -> Result<(), Box<dyn Error>> {
+    let home = tempfile::tempdir()?;
+    let install = Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
+        .args(["--json", "install", "--provider", "claude,codex", "--yes"])
+        .env("HOME", home.path())
+        .env_remove("CODEX_HOME")
+        .output()?;
+    assert!(install.status.success());
+
+    let result = run_install_session(home.path(), &["install"], Interaction::TuiConfirm)?;
+    assert_eq!(result.exit_code, Some(0));
+    let final_clear = result
+        .output
+        .rfind("\u{1b}[2J")
+        .ok_or("close did not clear the current screen")?;
+    let output_after_clear = &result.output[final_clear..];
+    assert!(!output_after_clear.contains("Everything is up to date"));
+    assert!(!output_after_clear.contains("Codex reads"));
     Ok(())
 }
 
@@ -186,6 +231,16 @@ fn tui_adoption_can_cancel_then_confirm_the_same_verified_plan() -> Result<(), B
     )?;
     assert_eq!(cancelled.initial_flags, cancelled.final_flags);
     assert_eq!(cancelled.exit_code, Some(0));
+    let cancel_clear = cancelled
+        .output
+        .rfind("\u{1b}[2J")
+        .ok_or("cancel did not clear the terminal")?;
+    let adoption_review = cancelled
+        .output
+        .rfind("Review filesystem plan")
+        .ok_or("adoption review is missing")?;
+    assert!(cancel_clear > adoption_review);
+    assert!(!cancelled.output[cancel_clear..].contains("cancelled before mutation"));
     assert!(
         !home
             .path()
@@ -561,6 +616,12 @@ fn run_install_session(
                         master.write_all(input)?;
                         master.flush()?;
                         tui_stage = 2;
+                    } else if tui_stage == 2
+                        && output.contains("All managed skills and agents match the desired state.")
+                    {
+                        master.write_all(b"\r")?;
+                        master.flush()?;
+                        tui_stage = 3;
                     }
                 }
                 if matches!(

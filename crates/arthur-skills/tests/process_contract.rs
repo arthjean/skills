@@ -19,6 +19,23 @@ fn run(home: &std::path::Path, arguments: &[&str]) -> Result<Output, std::io::Er
         .env("HOME", home)
         .env("PATH", home.join(".arthur-empty-path"))
         .env_remove("CODEX_HOME")
+        .env_remove("XDG_STATE_HOME")
+        .env_remove("ARTHUR_SKILLS_PLAIN")
+        .env_remove("NO_COLOR")
+        .output()
+}
+
+fn run_with_xdg_state(
+    home: &Path,
+    xdg_state_home: &Path,
+    arguments: &[&str],
+) -> Result<Output, std::io::Error> {
+    Command::new(env!("CARGO_BIN_EXE_arthur-skills"))
+        .args(arguments)
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", xdg_state_home)
+        .env("PATH", home.join(".arthur-empty-path"))
+        .env_remove("CODEX_HOME")
         .env_remove("ARTHUR_SKILLS_PLAIN")
         .env_remove("NO_COLOR")
         .output()
@@ -206,6 +223,61 @@ fn dry_run_is_deterministic_and_does_not_create_user_state() -> TestResult {
     );
     assert!(!home.path().join(".agents").exists());
     assert!(!home.path().join(".claude").exists());
+    Ok(())
+}
+
+#[test]
+fn fresh_claude_install_reports_when_a_running_session_needs_restart() -> TestResult {
+    let home = tempfile::tempdir()?;
+    let dry_run = run(
+        home.path(),
+        &["--json", "install", "--provider", "claude", "--dry-run"],
+    )?;
+    assert!(dry_run.status.success());
+    let envelope = json_output(&dry_run)?;
+    let restart = envelope["diagnostics"]
+        .as_array()
+        .and_then(|diagnostics| {
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic["code"] == "claude_restart_required")
+        })
+        .ok_or("dry-run restart notice is missing")?;
+    assert!(
+        restart["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("after creating"))
+    );
+    assert!(!home.path().join(".claude/skills").exists());
+
+    let install = run(
+        home.path(),
+        &["--json", "install", "--provider", "claude", "--yes"],
+    )?;
+    assert!(
+        install.status.success(),
+        "{}",
+        String::from_utf8_lossy(&install.stdout)
+    );
+    let envelope = json_output(&install)?;
+    assert!(
+        envelope["diagnostics"]
+            .as_array()
+            .is_some_and(|diagnostics| diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic["code"] == "claude_restart_required"))
+    );
+
+    let update = run(home.path(), &["--json", "update", "--yes"])?;
+    assert!(update.status.success());
+    let envelope = json_output(&update)?;
+    assert!(
+        envelope["diagnostics"]
+            .as_array()
+            .is_some_and(|diagnostics| diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic["code"] != "claude_restart_required"))
+    );
     Ok(())
 }
 
@@ -599,6 +671,138 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
     assert_eq!(fs::read(&archive)?, original_lock);
     let residual_after = serde_json::from_slice::<Value>(&fs::read(&lock_path)?)?;
     assert_eq!(residual_after["skills"]["personal"]["source"], "personal");
+    Ok(())
+}
+
+#[test]
+fn update_recovers_catalog_skills_from_exact_broken_claude_links_and_xdg_lock() -> TestResult {
+    let home = tempfile::tempdir()?;
+    let install = run(
+        home.path(),
+        &["--json", "install", "--provider", "claude,codex", "--yes"],
+    )?;
+    assert!(
+        install.status.success(),
+        "{}",
+        String::from_utf8_lossy(&install.stdout)
+    );
+
+    let receipt_path = home.path().join(".agents/.arthur-workflow/receipt.json");
+    let mut receipt = serde_json::from_slice::<Value>(&fs::read(&receipt_path)?)?;
+    receipt["assets"]
+        .as_array_mut()
+        .ok_or("receipt assets are not an array")?
+        .retain(|asset| {
+            let source = asset["source_id"].as_str().unwrap_or_default();
+            !["coss", "coss-particles"].iter().any(|name| {
+                source == format!("activation:claude:{name}")
+                    || source == format!("directory:skills/{name}")
+                    || source.starts_with(&format!("directory:skills/{name}/"))
+                    || source.starts_with(&format!("skills/{name}/"))
+            })
+        });
+    fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt)?)?;
+
+    fs::remove_dir_all(home.path().join(".agents/skills"))?;
+    fs::create_dir(home.path().join(".agents/skills"))?;
+    let prior_archive = home
+        .path()
+        .join(".agents/.arthur-workflow/vercel-skills-v3-lock.json");
+    fs::write(&prior_archive, b"prior archive")?;
+
+    let legacy_lock = serde_json::to_vec_pretty(&serde_json::json!({
+        "version": 3,
+        "skills": {
+            "coss": {
+                "source": "cosscom/coss",
+                "sourceType": "github",
+                "skillFolderHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            },
+            "coss-particles": {
+                "source": "cosscom/coss",
+                "sourceType": "github",
+                "skillFolderHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "installedAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            }
+        }
+    }))?;
+    let xdg_state_home = home.path().join("xdg-state");
+    let lock_path = xdg_state_home.join("skills/.skill-lock.json");
+    fs::create_dir_all(lock_path.parent().ok_or("lock has no parent")?)?;
+    fs::write(&lock_path, &legacy_lock)?;
+
+    let dry_run = run_with_xdg_state(
+        home.path(),
+        &xdg_state_home,
+        &["--json", "update", "--dry-run"],
+    )?;
+    assert!(
+        dry_run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&dry_run.stdout)
+    );
+    let dry_run_envelope = json_output(&dry_run)?;
+    assert_eq!(dry_run_envelope["data"]["legacy_skills_to_import"], 2);
+    assert_eq!(dry_run_envelope["data"]["applied"], false);
+    assert!(!home.path().join(".agents/skills/coss").exists());
+    assert!(
+        !home
+            .path()
+            .join(".agents/.arthur-workflow/vercel-skills-v3-lock-2.json")
+            .exists()
+    );
+
+    let update = run_with_xdg_state(home.path(), &xdg_state_home, &["--json", "update", "--yes"])?;
+    assert!(
+        update.status.success(),
+        "{}",
+        String::from_utf8_lossy(&update.stdout)
+    );
+    assert!(home.path().join(".agents/skills/coss/SKILL.md").is_file());
+    assert!(
+        home.path()
+            .join(".agents/skills/coss-particles/SKILL.md")
+            .is_file()
+    );
+    assert_eq!(
+        fs::read_link(home.path().join(".claude/skills/coss"))?,
+        Path::new("../../.agents/skills/coss")
+    );
+    assert_eq!(
+        fs::read_link(home.path().join(".claude/skills/coss-particles"))?,
+        Path::new("../../.agents/skills/coss-particles")
+    );
+    assert_eq!(
+        fs::read(
+            home.path()
+                .join(".agents/.arthur-workflow/vercel-skills-v3-lock-2.json")
+        )?,
+        legacy_lock
+    );
+    let residual = serde_json::from_slice::<Value>(&fs::read(&lock_path)?)?;
+    assert_eq!(
+        residual["skills"].as_object().map(serde_json::Map::len),
+        Some(0)
+    );
+    assert!(!home.path().join(".agents/.skill-lock.json").exists());
+
+    fs::write(&lock_path, &legacy_lock)?;
+    let cleanup = run_with_xdg_state(home.path(), &xdg_state_home, &["--json", "update", "--yes"])?;
+    assert!(
+        cleanup.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cleanup.stdout)
+    );
+    assert_eq!(
+        fs::read(
+            home.path()
+                .join(".agents/.arthur-workflow/vercel-skills-v3-lock-3.json")
+        )?,
+        legacy_lock
+    );
     Ok(())
 }
 

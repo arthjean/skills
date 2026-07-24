@@ -515,6 +515,8 @@ fn root_for_exact_path(
 fn root_spec(roots: &ResolvedRoots, identity: &RootIdentity) -> RootSpec {
     let id = if identity == &roots.canonical {
         "canonical".to_owned()
+    } else if roots.legacy_lock_root.as_ref() == Some(identity) {
+        "legacy-lock".to_owned()
     } else {
         roots
             .providers

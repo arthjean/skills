@@ -356,7 +356,10 @@ fn compare_root(
     recorded: &RootIdentity,
     current: &RootIdentity,
 ) -> Result<(), ReceiptError> {
-    if recorded == current {
+    // Device numbers identify a mount only within the running system and can change
+    // after a reboot or remount. Transaction preconditions still compare devices
+    // during one execution; durable root identity is lexical plus canonical path.
+    if recorded.lexical == current.lexical && recorded.real == current.real {
         return Ok(());
     }
     Err(ReceiptError::RootMismatch(Box::new(RootMismatch {
@@ -1082,7 +1085,7 @@ mod tests {
     }
 
     #[test]
-    fn changed_lexical_real_or_device_identity_blocks_mutation() {
+    fn changed_lexical_or_real_identity_blocks_mutation() {
         let home = tempdir().unwrap_or_else(|error| panic!("temporary HOME failed: {error}"));
         let roots = resolve_roots_from(Some(home.path().as_os_str()), None, &[ProviderId::Codex])
             .unwrap_or_else(|error| panic!("root resolution failed: {error}"));
@@ -1091,7 +1094,6 @@ mod tests {
         for mutation in [
             |roots: &mut crate::provider::ResolvedRoots| roots.home.lexical.push("other"),
             |roots: &mut crate::provider::ResolvedRoots| roots.canonical.real.push("other"),
-            |roots: &mut crate::provider::ResolvedRoots| roots.providers[0].root.device += 1,
         ] {
             let mut changed = roots.clone();
             mutation(&mut changed);
@@ -1100,6 +1102,22 @@ mod tests {
                 Err(ReceiptError::RootMismatch(_))
             ));
         }
+    }
+
+    #[test]
+    fn changed_device_identity_across_boot_does_not_block_mutation() {
+        let home = tempdir().unwrap_or_else(|error| panic!("temporary HOME failed: {error}"));
+        let roots = resolve_roots_from(Some(home.path().as_os_str()), None, &ProviderId::ALL)
+            .unwrap_or_else(|error| panic!("root resolution failed: {error}"));
+        let receipt = Receipt::new("0.1.0", "a".repeat(64), &roots);
+        let mut remounted = roots.clone();
+        remounted.home.device += 1;
+        remounted.canonical.device += 1;
+        for provider in &mut remounted.providers {
+            provider.root.device += 1;
+        }
+
+        assert_eq!(receipt.validate_roots(&remounted), Ok(()));
     }
 
     #[test]

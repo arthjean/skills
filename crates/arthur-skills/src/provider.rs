@@ -153,6 +153,8 @@ pub struct ResolvedRoots {
     pub home: RootIdentity,
     pub canonical: RootIdentity,
     pub canonical_skills: PathBuf,
+    pub legacy_lock_path: PathBuf,
+    pub legacy_lock_root: Option<RootIdentity>,
     pub state_directory: PathBuf,
     pub receipt_path: PathBuf,
     pub providers: Vec<ResolvedProvider>,
@@ -164,7 +166,9 @@ impl ResolvedRoots {
     }
 
     pub fn allowed_top_level_roots(&self) -> impl Iterator<Item = &RootIdentity> {
-        std::iter::once(&self.canonical).chain(self.providers.iter().map(|provider| &provider.root))
+        std::iter::once(&self.canonical)
+            .chain(self.providers.iter().map(|provider| &provider.root))
+            .chain(self.legacy_lock_root.iter())
     }
 }
 
@@ -281,12 +285,27 @@ impl std::error::Error for ResolveError {}
 pub fn resolve_roots(selected: &[ProviderId]) -> Result<ResolvedRoots, ResolveError> {
     let home = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"));
     let codex_home = env::var_os("CODEX_HOME");
-    resolve_roots_from(home.as_deref(), codex_home.as_deref(), selected)
+    let xdg_state_home = env::var_os("XDG_STATE_HOME").filter(|value| !value.is_empty());
+    resolve_roots_from_environment(
+        home.as_deref(),
+        codex_home.as_deref(),
+        xdg_state_home.as_deref(),
+        selected,
+    )
 }
 
 pub fn resolve_roots_from(
     home: Option<&OsStr>,
     codex_home: Option<&OsStr>,
+    selected: &[ProviderId],
+) -> Result<ResolvedRoots, ResolveError> {
+    resolve_roots_from_environment(home, codex_home, None, selected)
+}
+
+fn resolve_roots_from_environment(
+    home: Option<&OsStr>,
+    codex_home: Option<&OsStr>,
+    xdg_state_home: Option<&OsStr>,
     selected: &[ProviderId],
 ) -> Result<ResolvedRoots, ResolveError> {
     if !cfg!(any(unix, windows)) {
@@ -305,6 +324,18 @@ pub fn resolve_roots_from(
     let canonical_path = home_identity.lexical.join(".agents");
     let canonical = resolve_identity("canonical root", &canonical_path, false)?;
     let canonical_skills = canonical.lexical.join("skills");
+    let (legacy_lock_path, legacy_lock_root) = match xdg_state_home {
+        Some(path) => {
+            let state_home = validated_path("XDG_STATE_HOME", path)?;
+            let lock_root = resolve_identity(
+                "XDG_STATE_HOME skills root",
+                &state_home.join("skills"),
+                false,
+            )?;
+            (lock_root.lexical.join(".skill-lock.json"), Some(lock_root))
+        }
+        None => (canonical.lexical.join(".skill-lock.json"), None),
+    };
     let state_directory = canonical.lexical.join(".arthur-workflow");
     let receipt_path = state_directory.join("receipt.json");
     let mut providers = Vec::new();
@@ -339,6 +370,8 @@ pub fn resolve_roots_from(
         home: home_identity,
         canonical,
         canonical_skills,
+        legacy_lock_path,
+        legacy_lock_root,
         state_directory,
         receipt_path,
         providers,

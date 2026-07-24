@@ -102,6 +102,8 @@ pub struct Envelope {
     pub operations: Vec<OutputOperation>,
     pub diagnostics: Vec<OutputDiagnostic>,
     pub data: Value,
+    #[serde(skip)]
+    pub suppress_human_output: bool,
 }
 
 impl Envelope {
@@ -118,6 +120,7 @@ impl Envelope {
             operations: Vec::new(),
             diagnostics: Vec::new(),
             data: Value::Null,
+            suppress_human_output: false,
         }
     }
 
@@ -214,12 +217,41 @@ pub fn write_json(envelope: &Envelope, output: &mut impl Write) -> io::Result<()
 }
 
 pub fn write_human(envelope: &Envelope, output: &mut impl Write) -> io::Result<()> {
+    write_human_with_detail(envelope, output, true)
+}
+
+pub fn write_human_compact(envelope: &Envelope, output: &mut impl Write) -> io::Result<()> {
+    write_human_with_detail(envelope, output, false)
+}
+
+fn write_human_with_detail(
+    envelope: &Envelope,
+    output: &mut impl Write,
+    detailed: bool,
+) -> io::Result<()> {
     if envelope.data.get("result").and_then(Value::as_str) == Some("already_current")
         && let Some(message) = envelope.data.get("message").and_then(Value::as_str)
     {
         writeln!(output, "{message}")?;
         for diagnostic in &envelope.diagnostics {
             writeln!(output, "{}: {}", diagnostic.code, diagnostic.message)?;
+        }
+        return Ok(());
+    }
+    let committed = envelope.data.get("result").and_then(Value::as_str) == Some("committed");
+    if !detailed && committed {
+        writeln!(output, "Done")?;
+        let summary = compact_summary(envelope);
+        if !summary.is_empty() {
+            writeln!(output, "  {}", summary.join("  · "))?;
+        }
+        for diagnostic in &envelope.diagnostics {
+            let label = match diagnostic.severity {
+                OutputSeverity::Info => "Info",
+                OutputSeverity::Warning => "Note",
+                OutputSeverity::Error => "Error",
+            };
+            writeln!(output, "  {label}  {}", diagnostic.message)?;
         }
         return Ok(());
     }
@@ -253,6 +285,30 @@ pub fn write_human(envelope: &Envelope, output: &mut impl Write) -> io::Result<(
         writeln!(output, "{}: {}", diagnostic.code, diagnostic.message)?;
     }
     Ok(())
+}
+
+pub(crate) fn compact_summary(envelope: &Envelope) -> Vec<String> {
+    const ACTIONS: [(&str, &str); 9] = [
+        ("create", "created"),
+        ("update", "updated"),
+        ("remove", "removed"),
+        ("adoptable", "adoptable"),
+        ("drifted", "drifted"),
+        ("conflict", "conflicting"),
+        ("retained_unmanaged", "retained"),
+        ("recovery_required", "requiring recovery"),
+        ("noop", "unchanged"),
+    ];
+    ACTIONS
+        .iter()
+        .filter_map(|(action, label)| {
+            envelope
+                .summary
+                .get(*action)
+                .filter(|count| **count > 0)
+                .map(|count| format!("{count} {label}"))
+        })
+        .collect()
 }
 
 fn summarize(plan: &Plan) -> BTreeMap<String, usize> {
@@ -291,8 +347,8 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        ENVIRONMENT_EXIT_CODE, Envelope, OutputOperation, OutputStatus, USAGE_EXIT_CODE,
-        path_fields, write_human, write_json,
+        ENVIRONMENT_EXIT_CODE, Envelope, OutputDiagnostic, OutputOperation, OutputSeverity,
+        OutputStatus, USAGE_EXIT_CODE, path_fields, write_human, write_human_compact, write_json,
     };
     use crate::plan::{
         Diagnostic, DiagnosticSeverity, Owner, Plan, PlanAction, PlanEntry, PlannedMutation,
@@ -382,6 +438,37 @@ mod tests {
     }
 
     #[test]
+    fn compact_committed_output_summarizes_without_listing_paths() {
+        let mut envelope = Envelope::new(Some("install"));
+        envelope.summary.insert("noop".to_owned(), 513);
+        envelope.summary.insert("update".to_owned(), 13);
+        envelope.operations.push(OutputOperation {
+            action: PlanAction::Update,
+            source: "skill:test".to_owned(),
+            destination_utf8: Some("/home/user/.agents/skills/test".to_owned()),
+            destination_bytes_hex: None,
+            owner: Owner::ArthurWorkflow,
+            reason: "managed path is eligible for a verified update".to_owned(),
+        });
+        envelope.data = serde_json::json!({ "applied": true, "result": "committed" });
+        envelope.diagnostics.push(OutputDiagnostic {
+            code: "codex_uses_implicit_skills".to_owned(),
+            severity: OutputSeverity::Warning,
+            message: "Codex reads shared skills directly.".to_owned(),
+            path_utf8: None,
+            path_bytes_hex: None,
+            remediation: None,
+        });
+
+        let mut output = Vec::new();
+        assert!(write_human_compact(&envelope, &mut output).is_ok());
+        assert_eq!(
+            String::from_utf8_lossy(&output),
+            "Done\n  13 updated  · 513 unchanged\n  Note  Codex reads shared skills directly.\n"
+        );
+    }
+
+    #[test]
     fn writers_propagate_output_failures() {
         struct Reject;
 
@@ -398,5 +485,6 @@ mod tests {
         let envelope = Envelope::usage(Some("install"), "missing provider");
         assert!(write_json(&envelope, &mut Reject).is_err());
         assert!(write_human(&envelope, &mut Reject).is_err());
+        assert!(write_human_compact(&envelope, &mut Reject).is_err());
     }
 }

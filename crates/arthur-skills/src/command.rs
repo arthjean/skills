@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use semver::Version;
@@ -187,36 +187,32 @@ fn run_install(
         Ok(transition) => transition,
         Err(error) => return lifecycle_error("install", providers, error.to_string()),
     };
-    let interactive_workflow =
-        presentation != Presentation::NonInteractive && !arguments.confirmation.dry_run;
-    let legacy_import = if interactive_workflow && current.is_none() {
-        let lock_path = roots.canonical.lexical.join(".skill-lock.json");
-        let archive_path = roots.state_directory.join("vercel-skills-v3-lock.json");
+    let legacy_import = {
+        let archive_path = match next_legacy_archive_path(&roots.state_directory) {
+            Ok(path) => path,
+            Err(message) => return lifecycle_error("install", providers, message),
+        };
         match adoption::inspect_legacy_import(
-            &lock_path,
+            &roots.legacy_lock_path,
             &archive_path,
             &catalog_skill_names(catalog),
         ) {
             Ok(legacy) => legacy,
             Err(error) => return lifecycle_error("install", providers, error.to_string()),
         }
-    } else {
-        None
     };
-    let assessment = interactive_workflow.then(|| {
-        assess(
-            current.as_ref(),
-            &initial_transition.plan,
-            legacy_import
-                .as_ref()
-                .map_or(0, |legacy| legacy.managed_skill_names.len()),
-            legacy_import
-                .as_ref()
-                .map_or(0, |legacy| legacy.obsolete_skill_names.len()),
-        )
-    });
+    let assessment = Some(assess(
+        current.as_ref(),
+        &initial_transition.plan,
+        legacy_import
+            .as_ref()
+            .map_or(0, |legacy| legacy.managed_skill_names.len()),
+        legacy_import
+            .as_ref()
+            .map_or(0, |legacy| legacy.obsolete_skill_names.len()),
+    ));
     let transition = match assessment.as_ref().map(|value| value.state) {
-        Some(WorkflowState::Import) => {
+        Some(WorkflowState::Import) if legacy_import.is_some() => {
             match prepare_import_transition(catalog, &roots, &providers, legacy_import.as_ref()) {
                 Ok(transition) => transition,
                 Err(error) => return lifecycle_error("install", providers, error.to_string()),
@@ -224,7 +220,13 @@ fn run_install(
         }
         Some(WorkflowState::Update) => match current.as_ref() {
             Some(receipt) => {
-                match prepare_reconciliation_transition(catalog, &roots, receipt, &providers) {
+                match prepare_reconciliation_transition(
+                    catalog,
+                    &roots,
+                    receipt,
+                    &providers,
+                    legacy_import.as_ref(),
+                ) {
                     Ok(transition) => transition,
                     Err(error) => return lifecycle_error("install", providers, error.to_string()),
                 }
@@ -330,9 +332,35 @@ fn run_update(
         Ok(transition) => transition,
         Err(error) => return lifecycle_error("update", providers, error.to_string()),
     };
-    let assessment = assess(Some(&receipt), &initial_transition.plan, 0, 0);
-    let transition = match prepare_reconciliation_transition(catalog, &roots, &receipt, &providers)
-    {
+    let archive_path = match next_legacy_archive_path(&roots.state_directory) {
+        Ok(path) => path,
+        Err(message) => return lifecycle_error("update", providers, message),
+    };
+    let legacy_import = match adoption::inspect_legacy_import(
+        &roots.legacy_lock_path,
+        &archive_path,
+        &catalog_skill_names(catalog),
+    ) {
+        Ok(legacy) => legacy,
+        Err(error) => return lifecycle_error("update", providers, error.to_string()),
+    };
+    let assessment = assess(
+        Some(&receipt),
+        &initial_transition.plan,
+        legacy_import
+            .as_ref()
+            .map_or(0, |legacy| legacy.managed_skill_names.len()),
+        legacy_import
+            .as_ref()
+            .map_or(0, |legacy| legacy.obsolete_skill_names.len()),
+    );
+    let transition = match prepare_reconciliation_transition(
+        catalog,
+        &roots,
+        &receipt,
+        &providers,
+        legacy_import.as_ref(),
+    ) {
         Ok(transition) => transition,
         Err(error) => return lifecycle_error("update", providers, error.to_string()),
     };
@@ -345,7 +373,7 @@ fn run_update(
             presentation,
             signals,
             assessment: Some(&assessment),
-            legacy_import: None,
+            legacy_import: legacy_import.as_ref(),
         },
         roots,
         transition,
@@ -472,9 +500,11 @@ fn run_adopt(
             json!({ "adopted": 0, "message": "no matching unmanaged skill entries were found" });
         return envelope;
     }
-    let lock_path = roots.canonical.lexical.join(".skill-lock.json");
-    let archive_path = roots.state_directory.join("vercel-skills-v3-lock.json");
-    let adoption = match adoption::inspect(&lock_path, &archive_path, &entries) {
+    let archive_path = match next_legacy_archive_path(&roots.state_directory) {
+        Ok(path) => path,
+        Err(message) => return lifecycle_error("adopt", providers, message),
+    };
+    let adoption = match adoption::inspect(&roots.legacy_lock_path, &archive_path, &entries) {
         Ok(adoption) => adoption,
         Err(error) => return lifecycle_error("adopt", providers, error.to_string()),
     };
@@ -551,7 +581,11 @@ fn run_adopt(
                     "interrupted before mutation".to_owned(),
                 );
             }
-            Ok(PlainExit::Cancelled | PlainExit::Selected(_)) => return cancelled("adopt"),
+            Ok(PlainExit::Cancelled | PlainExit::Selected(_)) => {
+                let mut envelope = cancelled("adopt");
+                envelope.suppress_human_output = presentation == Presentation::Tui;
+                return envelope;
+            }
             Err(error) => {
                 return transaction_error(
                     "adopt",
@@ -580,7 +614,7 @@ fn run_adopt(
         }
     };
     let operations = match operations_for_adoption(
-        &lock_path,
+        &roots.legacy_lock_path,
         &adoption,
         &roots,
         &next_receipt,
@@ -686,13 +720,22 @@ fn apply_transition(
     } = request;
     let mut envelope = report_transition(command, transition.clone());
     if confirmation.dry_run {
+        if let Some(legacy) = legacy_import {
+            envelope.status = OutputStatus::Success;
+            envelope.data = json!({
+                "applied": false,
+                "legacy_skills_to_import": legacy.managed_skill_names.len(),
+                "legacy_skills_to_clean": legacy.obsolete_skill_names.len(),
+            });
+        }
         return envelope;
     }
-    let already_current = transition
-        .plan
-        .entries
-        .iter()
-        .all(|entry| entry.action == plan::PlanAction::Noop);
+    let already_current = legacy_import.is_none()
+        && transition
+            .plan
+            .entries
+            .iter()
+            .all(|entry| entry.action == plan::PlanAction::Noop);
     if already_current && (assessment.is_none() || presentation == Presentation::NonInteractive) {
         envelope.status = OutputStatus::Noop;
         envelope.data = json!({
@@ -734,7 +777,10 @@ fn apply_transition(
             Presentation::NonInteractive => unreachable!(),
         };
         match decision {
-            Ok(PlainExit::Confirmed) => {}
+            Ok(PlainExit::Confirmed) => {
+                envelope.suppress_human_output =
+                    already_current && presentation == Presentation::Tui;
+            }
             Ok(PlainExit::Interrupted(code)) => {
                 return transaction_error(
                     command,
@@ -746,6 +792,7 @@ fn apply_transition(
             Ok(PlainExit::Cancelled | PlainExit::Selected(_)) => {
                 envelope.status = OutputStatus::Noop;
                 envelope.data = json!({ "applied": false, "reason": "cancelled before mutation" });
+                envelope.suppress_human_output = presentation == Presentation::Tui;
                 return envelope;
             }
             Err(error) => {
@@ -782,21 +829,22 @@ fn apply_transition(
             );
         }
     };
-    let operations_result = match assessment.map(|value| value.state) {
-        Some(WorkflowState::Import) => operations_for_import(
+    let operations_result = if legacy_import.is_some() {
+        operations_for_import(
             &transition.plan,
-            &roots.canonical.lexical.join(".skill-lock.json"),
+            &roots.legacy_lock_path,
             legacy_import,
             &roots,
             &transition.receipt,
             &transaction_id,
-        ),
-        _ => operations_for_plan(
+        )
+    } else {
+        operations_for_plan(
             &transition.plan,
             &roots,
             &transition.receipt,
             &transaction_id,
-        ),
+        )
     };
     let operations = match operations_result {
         Ok(operations) => operations,
@@ -810,11 +858,7 @@ fn apply_transition(
         }
     };
     if !cli.json
-        && let Err(error) = writeln!(
-            io::stdout().lock(),
-            "Progress: applying {} transactional operations",
-            operations.len()
-        )
+        && let Err(error) = write_apply_progress(operations.len())
     {
         return transaction_error(
             command,
@@ -845,6 +889,14 @@ fn apply_transition(
     }
 }
 
+fn write_apply_progress(operation_count: usize) -> io::Result<()> {
+    let mut output = io::stdout().lock();
+    writeln!(
+        output,
+        "Applying {operation_count} transactional operations..."
+    )
+}
+
 fn providers_or_interactive(
     catalog: &Catalog,
     providers: Vec<ProviderId>,
@@ -872,7 +924,11 @@ fn providers_or_interactive(
                 code,
                 "interrupted before mutation".to_owned(),
             ))),
-            Ok(UiExit::Cancelled | UiExit::Confirmed) => Err(Box::new(cancelled(command))),
+            Ok(UiExit::Cancelled | UiExit::Confirmed) => {
+                let mut envelope = cancelled(command);
+                envelope.suppress_human_output = true;
+                Err(Box::new(envelope))
+            }
             Err(error) => Err(Box::new(transaction_error(
                 command,
                 Vec::new(),
@@ -966,6 +1022,32 @@ fn adoption_source_id(destination: &Path, roots: &ResolvedRoots) -> Option<Strin
             .and_then(|component| component.as_os_str().to_str())
             .map(str::to_owned)
     })
+}
+
+fn next_legacy_archive_path(state_directory: &Path) -> Result<PathBuf, String> {
+    const MAX_ARCHIVES: usize = 10_000;
+    for index in 1..=MAX_ARCHIVES {
+        let name = if index == 1 {
+            "vercel-skills-v3-lock.json".to_owned()
+        } else {
+            format!("vercel-skills-v3-lock-{index}.json")
+        };
+        let candidate = state_directory.join(name);
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(candidate),
+            Err(error) => {
+                return Err(format!(
+                    "cannot inspect legacy-lock archive destination {}: {error}",
+                    candidate.display()
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "legacy-lock archive limit of {MAX_ARCHIVES} entries reached in {}",
+        state_directory.display()
+    ))
 }
 
 fn recovery_required(command: &str, providers: Vec<ProviderId>) -> Envelope {
@@ -1078,7 +1160,10 @@ fn environment_error(command: &str, error: &ResolveError) -> Envelope {
         OutputDiagnostic::error(
             "environment_invalid",
             error.to_string(),
-            Some("Set accessible absolute HOME and CODEX_HOME paths, then retry.".to_owned()),
+            Some(
+                "Set accessible absolute HOME, CODEX_HOME and XDG_STATE_HOME paths, then retry."
+                    .to_owned(),
+            ),
         )
         .with_path(
             path.and_then(|path| path.path_utf8.clone()),
@@ -1096,7 +1181,7 @@ fn report_transition(command: &str, transition: LifecycleTransition) -> Envelope
             .notices
             .into_iter()
             .map(|notice| OutputDiagnostic {
-                code: format!("{:?}", notice.code).to_ascii_lowercase(),
+                code: notice.code.as_str().to_owned(),
                 severity: OutputSeverity::Warning,
                 message: notice.message,
                 path_utf8: None,
@@ -1154,6 +1239,8 @@ fn trusted_roots(roots: &ResolvedRoots) -> Vec<RootSpec> {
         .map(|identity| {
             let id = if identity == &roots.canonical {
                 "canonical"
+            } else if roots.legacy_lock_root.as_ref() == Some(identity) {
+                "legacy-lock"
             } else {
                 roots
                     .providers

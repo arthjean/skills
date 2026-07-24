@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(plan.entries[0].action, PlanAction::Create);
 
         let mut changed = roots.clone();
-        changed.canonical.device += 1;
+        changed.canonical.real.push("other");
         assert!(matches!(
             plan_desired_state(&changed, Some(&receipt), &desired),
             Err(EngineError::Receipt(_))

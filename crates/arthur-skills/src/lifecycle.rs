@@ -27,9 +27,23 @@ pub enum LifecycleIntent {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LifecycleNoticeCode {
+    ClaudeRestartRequired,
     CodexUsesImplicitSkills,
     CodexMayDiscoverCanonicalSkills,
     CodexIntegrationRemovedSkillsRemainVisible,
+}
+
+impl LifecycleNoticeCode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ClaudeRestartRequired => "claude_restart_required",
+            Self::CodexUsesImplicitSkills => "codex_uses_implicit_skills",
+            Self::CodexMayDiscoverCanonicalSkills => "codex_may_discover_canonical_skills",
+            Self::CodexIntegrationRemovedSkillsRemainVisible => {
+                "codex_integration_removed_skills_remain_visible"
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -162,7 +176,13 @@ pub fn prepare_lifecycle_transition(
         &managed,
         &plan,
     )?;
-    let notices = lifecycle_notices(intent, &current_providers, &selected_providers);
+    let notices = lifecycle_notices(
+        intent,
+        &current_providers,
+        &selected_providers,
+        &plan,
+        roots,
+    );
 
     Ok(LifecycleTransition {
         selected_providers,
@@ -226,6 +246,7 @@ pub fn prepare_reconciliation_transition(
     roots: &ResolvedRoots,
     current: &Receipt,
     providers: &[ProviderId],
+    legacy: Option<&LegacyImportPlan>,
 ) -> Result<LifecycleTransition, LifecycleError> {
     current.validate()?;
     current.validate_roots(roots)?;
@@ -238,17 +259,69 @@ pub fn prepare_reconciliation_transition(
     require_provider_roots(roots, &selected_providers)?;
     let managed = build_desired(catalog, roots, Some(current), &selected_providers)?;
     let mut baseline = current.clone();
-    baseline.assets = current
+    let mut observed = current
         .assets
         .iter()
         .map(|asset| observed_owned_asset(&asset.source_id, &asset.destination, &asset.references))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
-        .collect();
+        .map(|asset| (asset.destination.clone(), asset))
+        .collect::<BTreeMap<_, _>>();
+    if let Some(legacy) = legacy {
+        let legacy_names = legacy
+            .managed_skill_names
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>();
+        for entry in managed.values() {
+            if catalog_skill_name(&entry.asset.source_id)
+                .is_some_and(|name| legacy_names.contains(name))
+                && !observed.contains_key(&entry.asset.destination)
+                && let Some(asset) = observed_owned_asset(
+                    &entry.asset.source_id,
+                    &entry.asset.destination,
+                    &entry.references,
+                )?
+                && owned_matches_desired(&asset, &entry.asset)
+            {
+                observed.insert(asset.destination.clone(), asset);
+            }
+        }
+    }
+    baseline.assets = observed.into_values().collect();
     baseline.validate()?;
 
     transition_from_baseline(catalog, roots, &baseline, &selected_providers, managed)
+}
+
+fn catalog_skill_name(source_id: &str) -> Option<&str> {
+    if let Some(source) = source_id.strip_prefix("activation:claude:") {
+        let source = source
+            .strip_prefix("directory:skills/")
+            .or_else(|| source.strip_prefix("skills/"))
+            .unwrap_or(source);
+        return source.split('/').next().filter(|name| !name.is_empty());
+    }
+    source_id
+        .strip_prefix("directory:")
+        .unwrap_or(source_id)
+        .strip_prefix("skills/")
+        .and_then(|source| source.split('/').next())
+        .filter(|name| !name.is_empty())
+}
+
+fn owned_matches_desired(owned: &OwnedAsset, desired: &DesiredAsset) -> bool {
+    let expected = desired.payload.expected();
+    let kind = match expected.kind {
+        crate::plan::NodeKind::Directory => OwnedAssetKind::Directory,
+        crate::plan::NodeKind::File => OwnedAssetKind::File,
+        crate::plan::NodeKind::Symlink => OwnedAssetKind::Symlink,
+    };
+    owned.kind == kind
+        && owned.hash == expected.sha256
+        && owned.mode == expected.mode
+        && owned.link_target == expected.link_target
 }
 
 fn transition_from_baseline(
@@ -282,6 +355,8 @@ fn transition_from_baseline(
         },
         &managed_providers(Some(baseline)),
         selected_providers,
+        &plan,
+        roots,
     );
     Ok(LifecycleTransition {
         selected_providers: selected_providers.to_vec(),
@@ -962,8 +1037,27 @@ fn lifecycle_notices(
     intent: &LifecycleIntent,
     current: &[ProviderId],
     selected: &[ProviderId],
+    plan: &Plan,
+    roots: &ResolvedRoots,
 ) -> Vec<LifecycleNotice> {
     let mut notices = Vec::new();
+    if selected.contains(&ProviderId::Claude)
+        && let Some(skills) = roots
+            .provider(ProviderId::Claude)
+            .and_then(|provider| provider.skills.as_ref())
+        && plan
+            .entries
+            .iter()
+            .any(|entry| entry.destination == *skills && entry.action == PlanAction::Create)
+    {
+        notices.push(LifecycleNotice {
+            code: LifecycleNoticeCode::ClaudeRestartRequired,
+            message: format!(
+                "Restart Claude Code after creating {} if it was already running; new top-level skill directories are watched only after startup.",
+                skills.display()
+            ),
+        });
+    }
     if selected.contains(&ProviderId::Codex) {
         notices.push(LifecycleNotice {
             code: LifecycleNoticeCode::CodexUsesImplicitSkills,
