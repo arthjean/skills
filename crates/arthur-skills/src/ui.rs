@@ -395,6 +395,7 @@ fn render_review(frame: &mut Frame<'_>, app: &App, colors: bool) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_brand_header(
     frame: &mut Frame<'_>,
     area: Rect,
