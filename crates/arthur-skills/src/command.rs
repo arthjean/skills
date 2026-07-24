@@ -721,7 +721,6 @@ fn apply_transition(
     let mut envelope = report_transition(command, transition.clone());
     if confirmation.dry_run {
         if let Some(legacy) = legacy_import {
-            envelope.status = OutputStatus::Success;
             envelope.data = json!({
                 "applied": false,
                 "legacy_skills_to_import": legacy.managed_skill_names.len(),

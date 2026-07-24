@@ -283,8 +283,9 @@ pub fn prepare_reconciliation_transition(
                     &entry.asset.destination,
                     &entry.references,
                 )?
-                && owned_matches_desired(&asset, &entry.asset)
             {
+                // The v3 lock proves legacy ownership. Recording the observed
+                // state lets the planner update an older catalog version safely.
                 observed.insert(asset.destination.clone(), asset);
             }
         }
@@ -309,19 +310,6 @@ fn catalog_skill_name(source_id: &str) -> Option<&str> {
         .strip_prefix("skills/")
         .and_then(|source| source.split('/').next())
         .filter(|name| !name.is_empty())
-}
-
-fn owned_matches_desired(owned: &OwnedAsset, desired: &DesiredAsset) -> bool {
-    let expected = desired.payload.expected();
-    let kind = match expected.kind {
-        crate::plan::NodeKind::Directory => OwnedAssetKind::Directory,
-        crate::plan::NodeKind::File => OwnedAssetKind::File,
-        crate::plan::NodeKind::Symlink => OwnedAssetKind::Symlink,
-    };
-    owned.kind == kind
-        && owned.hash == expected.sha256
-        && owned.mode == expected.mode
-        && owned.link_target == expected.link_target
 }
 
 fn transition_from_baseline(

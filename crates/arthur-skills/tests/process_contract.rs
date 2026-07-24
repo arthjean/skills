@@ -675,7 +675,7 @@ fn matching_vercel_v3_installation_can_be_adopted_atomically() -> TestResult {
 }
 
 #[test]
-fn update_recovers_catalog_skills_from_exact_broken_claude_links_and_xdg_lock() -> TestResult {
+fn update_recovers_divergent_legacy_skills_and_broken_links_from_xdg_lock() -> TestResult {
     let home = tempfile::tempdir()?;
     let install = run(
         home.path(),
@@ -705,6 +705,13 @@ fn update_recovers_catalog_skills_from_exact_broken_claude_links_and_xdg_lock() 
 
     fs::remove_dir_all(home.path().join(".agents/skills"))?;
     fs::create_dir(home.path().join(".agents/skills"))?;
+    let legacy_coss_file = home.path().join(".agents/skills/coss/SKILL.md");
+    fs::create_dir_all(
+        legacy_coss_file
+            .parent()
+            .ok_or("legacy coss file has no parent")?,
+    )?;
+    fs::write(&legacy_coss_file, b"legacy catalog bytes")?;
     let prior_archive = home
         .path()
         .join(".agents/.arthur-workflow/vercel-skills-v3-lock.json");
@@ -745,9 +752,11 @@ fn update_recovers_catalog_skills_from_exact_broken_claude_links_and_xdg_lock() 
         String::from_utf8_lossy(&dry_run.stdout)
     );
     let dry_run_envelope = json_output(&dry_run)?;
+    assert_eq!(dry_run_envelope["status"], "success");
+    assert_eq!(dry_run_envelope["exit_code"], 0);
     assert_eq!(dry_run_envelope["data"]["legacy_skills_to_import"], 2);
     assert_eq!(dry_run_envelope["data"]["applied"], false);
-    assert!(!home.path().join(".agents/skills/coss").exists());
+    assert_eq!(fs::read(&legacy_coss_file)?, b"legacy catalog bytes");
     assert!(
         !home
             .path()
@@ -762,6 +771,7 @@ fn update_recovers_catalog_skills_from_exact_broken_claude_links_and_xdg_lock() 
         String::from_utf8_lossy(&update.stdout)
     );
     assert!(home.path().join(".agents/skills/coss/SKILL.md").is_file());
+    assert_ne!(fs::read(&legacy_coss_file)?, b"legacy catalog bytes");
     assert!(
         home.path()
             .join(".agents/skills/coss-particles/SKILL.md")
