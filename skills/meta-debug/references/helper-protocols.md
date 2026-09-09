@@ -4,7 +4,7 @@ Load this file only when Phase 2 delegates a named diagnostic gap.
 
 ## Budgets
 
-The selected profile cap overrides the availability of additional roles.
+The run-wide helper cap (two) overrides the availability of additional roles.
 
 | Role | Diagnostic use | Limit |
 |---|---|---|
@@ -12,7 +12,7 @@ The selected profile cap overrides the availability of additional roles.
 | `docs-researcher` | One exact version-sensitive API or configuration question | 3 Context7 calls, 500 output tokens |
 | `web-researcher` | Exact external error, known bug, platform issue, or undocumented behavior | 2-4 searches, 700 output tokens |
 
-STANDARD uses at most one helper. DEEP uses at most two helpers for distinct gaps. FAST uses none. Helpers are read-only, use delegation depth one, and never spawn another helper.
+At most two helpers per run, for distinct gaps. Helpers are read-only, use delegation depth one, and never spawn another helper.
 
 When custom role selection is unavailable, use the equivalent direct tool path from the global Codex instructions. Do not claim delegation when it did not occur.
 

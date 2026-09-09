@@ -43,25 +43,20 @@ your-skill-name/
 - Cannot include "claude" or "anthropic" (reserved)
 
 ### description (required)
-- MUST include BOTH: what the skill does AND when to use it (trigger conditions)
-- Under 1024 characters
+- As short as possible while making clear when the skill should fire: what it does in a few words, then the distinct trigger branches
 - No XML tags (< or >)
-- Include specific tasks users might say
-- Mention file types if relevant
-
-**Structure:** `[What it does] + [When to use it] + [Key capabilities]`
+- Hard limit 1024 characters, but a good description is far below it: every character sits in context on every turn, and Codex truncates descriptions when too many skills are loaded
+- Triggers name the task, not the topic. A description that fires on any mention of a topic pushes the model to load instructions that do not help
+- Cut identity the body already carries, and cut synonyms that rename one trigger
 
 **Good examples:**
 
 ```yaml
-# Good - specific and actionable
-description: Analyzes Figma design files and generates developer handoff documentation. Use when user uploads .fig files, asks for "design specs", "component documentation", or "design-to-code handoff".
+# Fires only on the task, not on every database mention
+description: Write and apply a schema migration. Use when the user asks for a migration or a schema change.
 
-# Good - includes trigger phrases
-description: Manages Linear project workflows including sprint planning, task creation, and status tracking. Use when user mentions "sprint", "Linear tasks", "project planning", or asks to "create tickets".
-
-# Good - clear value proposition
-description: End-to-end customer onboarding workflow for PayFlow. Handles account creation, payment setup, and subscription management. Use when user says "onboard new customer", "set up subscription", or "create PayFlow account".
+# Two distinct branches, one trigger each
+description: Certify one implemented PRD epic and write its final status. Use when asked to review, certify, or recheck an epic.
 ```
 
 **Bad examples:**
@@ -70,11 +65,11 @@ description: End-to-end customer onboarding workflow for PayFlow. Handles accoun
 # Too vague
 description: Helps with projects.
 
-# Missing triggers
-description: Creates sophisticated multi-page documentation systems.
+# Topic trigger: loads on anything database-related
+description: Database expert. Use whenever the user works with databases, SQL, schemas, queries, ORMs, or data.
 
-# Too technical, no user triggers
-description: Implements the Project entity model with hierarchical relationships.
+# Pick-me energy and stacked synonyms: overtriggers and crowds out neighbors
+description: Use this skill ALWAYS for any API question, even when you think you know the answer. Handles setup, configuration, "how do I", debugging, migration, CLI usage, and more.
 ```
 
 ### license (optional)
@@ -109,7 +104,7 @@ metadata:
 ### context (optional)
 - Set to `fork` to run the skill in an isolated subagent context (fresh window, no conversation history)
 - The skill content becomes the agent's task prompt
-- Only use for skills with explicit actionable instructions — background-knowledge skills without a clear task will return without meaningful output
+- Only use for skills with explicit actionable instructions : background-knowledge skills without a clear task will return without meaningful output
 - Example: `context: fork`
 
 ### agent (optional)

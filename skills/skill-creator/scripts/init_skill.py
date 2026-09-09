@@ -17,7 +17,7 @@ from pathlib import Path
 
 SKILL_TEMPLATE = """---
 name: {skill_name}
-description: [TODO: Complete and informative explanation of what the skill does and when to use it. Include WHEN to use this skill - specific scenarios, file types, or tasks that trigger it.]
+description: [TODO: what the skill does in a few words, then one trigger per distinct task. Keep it as short as possible.]
 ---
 
 # {skill_title}

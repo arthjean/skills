@@ -1,10 +1,10 @@
 # meta-code helper protocols
 
-Load this file only when `meta-code` delegates a named evidence gap, DEEP verification, or the single allowed refinement.
+Load this file only when `meta-code` delegates a named evidence gap, an independent verification, or the single allowed refinement.
 
 ## Budgets
 
-The profile helper cap always overrides the availability of more roles.
+The run-wide helper cap (three) always overrides the availability of more roles.
 
 | Role | Use | Per-helper limit |
 |---|---|---|
@@ -12,7 +12,7 @@ The profile helper cap always overrides the availability of more roles.
 | `docs-researcher` | One exact version-sensitive API question | 3 Context7 calls, 500 output tokens |
 | `agent-explorer` | Broad cross-module or dependency question | 12-18 operations normally, 24 maximum, 900 output tokens |
 | Built-in `explorer` | Bounded local flow | Smallest useful file set, 600 output tokens |
-| Built-in `worker` | DEEP completeness evaluation without new evidence | 500 output tokens |
+| Built-in `worker` | Completeness evaluation without new evidence | 500 output tokens |
 | Refinement helper | One blocking missing obligation | 400 output tokens and one invocation maximum |
 
 Helpers are read-only, use delegation depth one, and never contact another helper. When the launcher cannot select a preferred custom role, the parent uses the equivalent direct tool path from the global Codex instructions.
@@ -43,7 +43,7 @@ Return only:
 Stop when the obligation is supported. Do not broaden scope, repeat the question, modify files, or spawn another helper.
 ```
 
-## DEEP verification selection
+## Verification selection
 
 Choose one mode only.
 
@@ -60,7 +60,7 @@ For each claim, return CONFIRMED, WEAKENED, or REFUTED with one current primary 
 
 ### Completeness evaluator
 
-Use a fresh built-in `worker` when the evidence is sufficient but the DEEP synthesis may contain a reasoning or coverage gap.
+Use a fresh built-in `worker` when the evidence is sufficient but the synthesis may contain a reasoning or coverage gap.
 
 ```text
 Evaluate the draft only against these answer obligations:

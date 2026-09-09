@@ -1,217 +1,31 @@
 ---
-model: opus
 name: skill-creator
-description: >
-  Interactive guide for creating new skills (or updating existing skills) that extend Claude's
-  capabilities with specialized knowledge, workflows, or tool integrations. Walks the user through
-  use case definition, frontmatter generation, instruction writing, and validation. Use when user
-  asks to create a new skill, build a skill, update an existing skill, says "skill-creator",
-  "create a skill for", "build a skill that", or wants help designing skill structure and content.
-  Do NOT use for general prompting questions or non-skill configuration tasks.
+description: Scaffold, validate, and package a skill folder. Use when asked to create a new skill or package an existing one.
 argument-hint: "[skill-name-or-description]"
 ---
 
-# Skill Creator
+# skill-creator
 
-Guide for building effective, well-structured skills following Anthropic's official best practices.
+A skill is a folder with a `SKILL.md` (YAML frontmatter plus Markdown body) and optional `scripts/`, `references/`, and `assets/`. This skill handles the mechanics. How to write the content is a separate concern: read the `writing-for-agents` skill before drafting the body or the description, and treat it as the source of truth on wording.
 
-## Core Concepts
+## Before creating
 
-A **skill** is a folder containing instructions (packaged as Markdown with YAML frontmatter) that teaches Claude how to handle specific tasks or workflows. Skills use **progressive disclosure**:
+Ask whether the skill should exist. Each model-invoked skill adds its description to the model's context on every turn, and a crowded roster makes every skill harder to pick. Prefer one of these when it fits: a line in `AGENTS.md`, a plain doc reached by a pointer, or an existing skill extended with one branch. Creating a skill that overlaps an existing one, or overwriting one with the same name, needs the user's say-so.
 
-1. **First level (YAML frontmatter):** Always loaded in Claude's system prompt. Provides just enough info for Claude to know WHEN each skill should be used.
-2. **Second level (SKILL.md body):** Loaded when Claude thinks the skill is relevant. Contains the full instructions and guidance.
-3. **Third level (Linked files):** Additional files in `references/`, `scripts/`, `assets/` that Claude discovers and loads only as needed.
+A skill earns its place for a workflow the model needs only on certain tasks, or for instructions on using a tool or plugin.
 
-## Skill Creation Workflow
+## Create
 
-Follow these steps in order:
+1. Scaffold: `python3 scripts/init_skill.py <skill-name> --path <output-directory>`.
+2. Frontmatter: field rules and examples in [Technical rules](references/technical-rules.md). The description states what the skill does in a few words, then one trigger per distinct branch. Shorter is better; the 1024-character limit is a ceiling, not a target.
+3. Body: for a single workflow, the steps and their completion criteria. For several workflows, a minimal router pointing to `references/` files so a run reads only what its branch needs. Current models handle nuance well: state invariants, boundaries, and what done looks like, and leave routine choices to the model rather than scripting them. Say explicitly which local actions are authorized without asking. State that explicit user instructions override the skill.
+4. Bundle in `scripts/` code that would otherwise be rewritten each run or must be deterministic; in `assets/` templates used in output.
+5. Validate: `python3 scripts/quick_validate.py <skill-folder>`. Package for distribution: `python3 scripts/package_skill.py <skill-folder> [output-directory]`.
 
-### Step 1: Define Use Cases
+## Update
 
-Before writing any code, identify 2-3 concrete use cases the skill should enable.
+Prune before adding. Delete lines the model already obeys by default, forced reads of files the task may not need, encouragement to test that the model already does on its own, and approval gates added to tame an older model. Guidance written for one model can overconstrain another, so keep repository skills model-neutral.
 
-Ask yourself:
-- What does a user want to accomplish?
-- What multi-step workflows does this require?
-- Which tools are needed (built-in or MCP)?
-- What domain knowledge or best practices should be embedded?
+If the skill overtriggers, narrow the trigger to the task rather than the topic. If it undertriggers, use the leading word the user actually types, rather than piling on synonyms.
 
-Good use case definition:
-```
-Use Case: Project Sprint Planning
-Trigger: User says "help me plan this sprint" or "create sprint tasks"
-Steps:
-1. Fetch current project status from Linear (via MCP)
-2. Analyze team capacity
-3. Suggest task prioritization
-4. Create tasks in Linear with proper labels and estimates
-Result: Fully planned sprint with tasks created
-```
-
-### Step 2: Plan Skill Contents
-
-Analyze each use case to identify reusable resources:
-
-- **Scripts** (`scripts/`): Code that gets rewritten repeatedly or needs deterministic reliability
-- **References** (`references/`): Documentation Claude should consult while working
-- **Assets** (`assets/`): Templates, fonts, icons used in output (not loaded into context)
-
-### Step 3: Initialize the Skill
-
-Run the init script to generate a template:
-
-```bash
-python3 scripts/init_skill.py <skill-name> --path <output-directory>
-```
-
-This creates the skill directory with a SKILL.md template and example resource directories.
-
-### Step 4: Write the Skill
-
-This is the critical step. Follow these rules carefully.
-
-#### 4a: Write the Frontmatter
-
-The YAML frontmatter is the most important part. It determines whether Claude loads your skill.
-
-Consult `references/technical-rules.md` for all field requirements and naming conventions.
-
-**Minimal required format:**
-```yaml
----
-name: your-skill-name
-description: What it does. Use when user asks to [specific phrases].
----
-```
-
-**Description structure:** `[What it does] + [When to use it] + [Key capabilities]`
-
-CRITICAL rules for the description:
-- MUST include BOTH what the skill does AND when to use it (trigger conditions)
-- Under 1024 characters
-- No XML tags (< or >)
-- Include specific tasks users might say
-- Mention relevant file types if applicable
-
-#### 4b: Write the Instructions (Body)
-
-After the frontmatter, write Markdown instructions. Recommended structure:
-
-```markdown
-# Your Skill Name
-
-## Instructions
-
-### Step 1: [First Major Step]
-Clear explanation of what happens.
-
-### Step 2: [Next Step]
-[...]
-
-## Examples
-
-### Example 1: [common scenario]
-User says: "[example request]"
-Actions:
-1. [action]
-2. [action]
-Result: [expected outcome]
-
-## Common Issues
-
-### Error: [Common error message]
-Cause: [Why it happens]
-Solution: [How to fix]
-```
-
-**Best practices for instructions:**
-- Be specific and actionable: `Run python scripts/validate.py --input {filename}` instead of `Validate the data before proceeding.`
-- Use imperative/infinitive form
-- Include error handling with specific solutions
-- Reference bundled resources clearly: `Before writing queries, consult references/api-patterns.md for rate limiting guidance`
-- Keep SKILL.md under 5,000 words; move detailed docs to `references/`
-
-For detailed design patterns (sequential workflows, multi-MCP coordination, iterative refinement, context-aware tool selection, domain-specific intelligence), see `references/design-patterns.md`.
-
-#### 4c: Apply Progressive Disclosure
-
-Keep SKILL.md focused on core instructions. Move detailed documentation to `references/` and link to it.
-
-Patterns:
-- **High-level guide with references:** Core workflow in SKILL.md, details in reference files
-- **Domain-specific organization:** One reference file per domain/variant
-- **Conditional details:** Basic content inline, advanced content in separate files
-
-IMPORTANT: All reference files should link directly from SKILL.md with clear descriptions of when to read them. Keep references one level deep (no nested references).
-
-### Step 5: Validate and Package
-
-Run validation:
-```bash
-python3 scripts/quick_validate.py <path/to/skill-folder>
-```
-
-Package for distribution:
-```bash
-python3 scripts/package_skill.py <path/to/skill-folder> [output-directory]
-```
-
-The packaging script validates automatically before creating the `.skill` file.
-
-### Step 6: Test and Iterate
-
-**Triggering tests:** Verify the skill loads at the right times.
-- Should trigger on obvious tasks and paraphrased requests
-- Should NOT trigger on unrelated topics
-
-**Functional tests:** Verify correct outputs.
-- Valid outputs generated
-- API calls succeed (if applicable)
-- Edge cases covered
-
-**Iteration signals:**
-- Undertriggering (skill doesn't load when it should): Add more detail and trigger phrases to description
-- Overtriggering (skill loads for unrelated queries): Add negative triggers, be more specific
-- Instructions not followed: Keep instructions concise, use bullet points, put critical instructions at the top
-
-## Validation Checklist
-
-Before considering a skill complete, verify:
-
-- [ ] Folder named in kebab-case
-- [ ] `SKILL.md` file exists (exact spelling, case-sensitive)
-- [ ] YAML frontmatter has `---` delimiters
-- [ ] `name` field: kebab-case, no spaces, no capitals
-- [ ] `description` includes WHAT and WHEN
-- [ ] No XML tags (< >) anywhere in frontmatter
-- [ ] Instructions are clear and actionable
-- [ ] Error handling included
-- [ ] Examples provided
-- [ ] References clearly linked
-- [ ] No README.md inside skill folder (all docs go in SKILL.md or references/)
-
-## Done When
-
-- [ ] SKILL.md file created with valid YAML frontmatter
-- [ ] `name` and `description` fields are present and well-formed
-- [ ] Instructions are clear, actionable, and follow step-by-step structure
-- [ ] Reference files created in `references/` for detailed content
-- [ ] Validation checklist above passes (all items checked)
-
-## Constraints (Three-Tier)
-
-### ALWAYS
-- Verify frontmatter has `name` and `description` fields
-- Keep SKILL.md under 5,000 words — move details to `references/`
-- Include error handling with specific solutions
-- Link reference files clearly from SKILL.md
-
-### ASK FIRST
-- Overwrite an existing skill with the same name
-- Create skills that overlap with existing skill functionality
-
-### NEVER
-- Create a README.md inside a skill folder — use SKILL.md or references/
-- Use XML tags (< >) in frontmatter description
-- Create skills with spaces or uppercase in the name
+**Complete when:** `quick_validate.py` passes, the description fits on one or two lines and names only distinct triggers, every `references/` file is linked from `SKILL.md` with the condition for reading it, and no `README.md` sits inside the skill folder.
