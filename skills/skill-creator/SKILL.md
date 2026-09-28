@@ -12,20 +12,24 @@ A skill is a folder with a `SKILL.md` (YAML frontmatter plus Markdown body) and 
 
 Ask whether the skill should exist. Each model-invoked skill adds its description to the model's context on every turn, and a crowded roster makes every skill harder to pick. Prefer one of these when it fits: a line in `AGENTS.md`, a plain doc reached by a pointer, or an existing skill extended with one branch. Creating a skill that overlaps an existing one, or overwriting one with the same name, needs the user's say-so.
 
-A skill earns its place for a workflow the model needs only on certain tasks, or for instructions on using a tool or plugin.
+A skill earns its place for a workflow the model needs only on certain tasks, or for instructions on using a tool or plugin, and only when its content is particular to the user, team, or product: general practice the model already holds needs no skill.
 
 ## Create
 
 1. Scaffold: `python3 scripts/init_skill.py <skill-name> --path <output-directory>`.
 2. Frontmatter: field rules and examples in [Technical rules](references/technical-rules.md). The description states what the skill does in a few words, then one trigger per distinct branch. Shorter is better; the 1024-character limit is a ceiling, not a target.
-3. Body: for a single workflow, the steps and their completion criteria. For several workflows, a minimal router pointing to `references/` files so a run reads only what its branch needs. Current models handle nuance well: state invariants, boundaries, and what done looks like, and leave routine choices to the model rather than scripting them. Say explicitly which local actions are authorized without asking. State that explicit user instructions override the skill.
-4. Bundle in `scripts/` code that would otherwise be rewritten each run or must be deterministic; in `assets/` templates used in output.
+3. Body: for a single workflow, the steps and their completion criteria. For several workflows, a minimal router pointing to `references/` files so a run reads only what its branch needs. Either way the body carries a finish line, named stops, explicit authorization for safe local actions, and user precedence, and leaves routine choices to the model (`writing-for-agents`, Boundaries and autonomy).
+4. Bundle in `scripts/` code that would otherwise be rewritten each run or must be deterministic, and give it an interface that explains itself (named flags, enumerated values, `--help`) so the body names the script rather than scripting its use; in `assets/` templates used in output.
 5. Validate: `python3 scripts/quick_validate.py <skill-folder>`. Package for distribution: `python3 scripts/package_skill.py <skill-folder> [output-directory]`.
 
 ## Update
 
-Prune before adding. Delete lines the model already obeys by default, forced reads of files the task may not need, encouragement to test that the model already does on its own, and approval gates added to tame an older model. Guidance written for one model can overconstrain another, so keep repository skills model-neutral.
+Prune before adding, per `writing-for-agents` (Pruning, Audience of models): sediment gates, no-ops, worst-case rules, forced reads, and reasoning nudges go first. Reasoning depth belongs in the `effort` field, not in a "think carefully" line.
 
 If the skill overtriggers, narrow the trigger to the task rather than the topic. If it undertriggers, use the leading word the user actually types, rather than piling on synonyms.
 
 **Complete when:** `quick_validate.py` passes, the description fits on one or two lines and names only distinct triggers, every `references/` file is linked from `SKILL.md` with the condition for reading it, and no `README.md` sits inside the skill folder.
+
+## Sources
+
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

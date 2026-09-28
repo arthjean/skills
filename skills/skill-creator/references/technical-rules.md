@@ -96,6 +96,12 @@ metadata:
 - Example: `model: opus` for complex multi-agent pipelines
 - If omitted, the skill uses the current session's model
 
+### effort (optional)
+- Reasoning effort while the skill is active; overrides the session level, which it inherits when omitted
+- Values: `low`, `medium`, `high`, `xhigh`, `max`; the available levels depend on the model
+- The lever for reasoning depth: use it instead of "think carefully" or "think step by step" lines in the body, which only add latency on models that already think before every reply
+- Example: `effort: high` for an audit that must trace data flows
+
 ### argument-hint (optional)
 - Placeholder text shown in autocomplete to indicate expected arguments
 - Example: `argument-hint: "[file-or-folder] [--perf|--clean]"`
@@ -165,5 +171,5 @@ metadata:
 3. Contains `name` field (kebab-case string)
 4. Contains `description` field (string, < 1024 chars)
 5. No XML tags in any field
-6. No unknown fields (only: name, description, model, argument-hint, context, agent, disable-model-invocation, user-invocable, license, allowed-tools, compatibility, metadata)
+6. No unknown fields (only: name, description, model, effort, argument-hint, context, agent, disable-model-invocation, user-invocable, license, allowed-tools, compatibility, metadata)
 7. Valid YAML syntax (proper quoting, no unclosed quotes)
