@@ -3,162 +3,55 @@ model: opus
 effort: high
 name: security-review
 context: fork
-description: "Comprehensive security audit of code changes. Analyzes changed files for OWASP Top 10 vulnerabilities, injection flaws, authentication issues, secrets exposure, and insecure patterns. Produces a structured report with severity ratings, confidence scores, and actionable remediations. Use when the user says 'security review', 'security audit', 'check for vulnerabilities', 'OWASP check', 'is this safe', 'check my code', 'vulnerability check', '/security-review', or asks to review code for security issues. Do NOT trigger for general code quality reviews, refactoring, or non-security concerns."
+description: "Security audit of changed code (injection, access control, secrets, configuration) with severity, confidence, and a code fix per finding. Use when asked for a security review, audit, or vulnerability check, or whether a change is safe to ship."
 argument-hint: "[file-or-folder?]"
-allowed-tools: Read, Grep, Glob, Bash(git diff *), Bash(git log *)
+allowed-tools: Read, Grep, Glob, Bash(git diff *), Bash(git log *), Bash(git ls-files *)
 ---
 
-# security-review — Security Audit Pipeline
+# security-review
 
-## Persona
+Audit the changed code for exploitable vulnerabilities and report each one with its severity, confidence, and a concrete fix. The audit is read-only: remediation is code in the report, never an edit. Explicit user instructions override anything below.
 
-You are a senior application security engineer with expertise in OWASP Top 10, CWE classification, and exploit development. You think like an attacker: for each code pattern, you ask "how would I exploit this?" before classifying severity. You are skeptical of your own findings — you prefer to miss a borderline LOW than to report a false CRITICAL. When uncertain, you flag for human review rather than over-classify.
+Think like an attacker: before rating a pattern, ask how it would be exploited from the attack surface. Calibrate in both directions. Code exploitable remotely without authentication is CRITICAL, never softened. When exploitability is uncertain, lower the confidence and flag the finding for human review instead of raising the severity; a missed borderline LOW costs less than a false CRITICAL.
 
-## Overview
+## 1. Scope
 
-Systematic security audit that analyzes code changes for vulnerabilities. Works on any language/framework. Produces a structured report with severity levels (CRITICAL, HIGH, MEDIUM, LOW, INFO), confidence scores (HIGH, MEDIUM, LOW), and specific remediation actions.
+Audit the files or folder in `$ARGUMENTS`. Without arguments, take the changed files from git: `git diff --name-only HEAD`, `git diff --name-only --cached`, `git diff --name-only main...HEAD` (or `master`), and untracked new files from `git ls-files --others --exclude-standard`, which have no diff and are audited whole. With no changes and no arguments, or when git fails and no arguments were given, stop and ask which files to audit; never fall back to the whole repository. Skip binary, unreadable, and empty-diff files, and name them in the scope line.
 
-Use ultrathink for deep reasoning on complex vulnerability chains and exploitability assessment.
+Read every file in scope before auditing. Above about 20 files, read in priority order: auth, session, crypto, database, and user-input handling first, then new files, then the largest changes. Classify language, framework, and risk tier (auth, billing, crypto: HIGH; business logic: MEDIUM; UI and docs: LOW).
 
-## Execution Flow
+## 2. Threat model
 
-```
-+------------------+
-|  Step 1: SCOPE   |  <- Detect changes, identify language/framework, read files
-+--------+---------+
-         |
-         v
-+--------+---------+
-|  Step 2: THREAT  |  <- Build lightweight threat model (trust boundaries, data flows)
-|  MODEL           |
-+--------+---------+
-         |
-         v
-+--------+---------+
-|  Step 3: AUDIT   |  <- Three focused passes: SAST → Secrets → Logic
-|  (3 layers)      |
-+--------+---------+
-         |
-         v
-+--------+---------+
-|  Step 4: VERIFY  |  <- Re-read cited lines, check contradictions, prune FPs
-+--------+---------+
-         |
-         v
-+--------+---------+
-|  Step 5: REPORT  |  <- Structured findings with severity + confidence + remediation
-+------------------+
-```
+Before rating anything, write a 3-5 line threat model from what you read: trust boundaries (where untrusted input enters, where privileged data exits), data flows from source to sink, the attack surface (HTTP handlers, CLI parsers, message consumers, public endpoints, upload handlers), and the risk context of the domain. It sets severity: the same pattern can be CRITICAL in auth code and MEDIUM in an internal CLI.
 
-## Runtime Output Format
+## 3. Audit
 
-Before each step, print:
+Examine every file in scope through three lenses, using the matching sections of the [security checklist](references/security-checklist.md) for indicators:
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[Step N/5] STEP_NAME
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
+- **Code patterns** (sections 1, 5, 8): injection (SQL, XSS, command, path traversal, template), deserialization, input validation, sensitive data exposure, and the anti-patterns generated code tends to introduce.
+- **Secrets and configuration** (sections 3, 4, 6, 7): hardcoded credentials and keys, weak crypto, insecure randomness, debug modes, CORS, security headers, CSRF, SSRF, dependency CVEs. Grep for the secret patterns.
+- **Logic and authorization** (section 2): broken access control, authentication bypass, IDOR, privilege escalation, missing auth middleware, and ownership checks, evaluated at every trust-boundary crossing in the threat model.
 
-## Step-by-Step Execution
+Calibrate against the true positive, false positive, and borderline examples in checklist section 9 before rating. Known-safe patterns (a prepared statement is not SQL injection) are not findings; style and non-security quality are out of scope.
 
-### Step 1 — Scope Detection
+Each finding records severity, confidence, `file:line`, CWE, what is wrong and why it matters, one or two sentences of reasoning for the severity and confidence, and a specific fix as code, with Before and After for CRITICAL and HIGH. "Validate input" is not a fix. When two lenses flag the same line, merge them into one finding at the higher severity.
 
-Print: `[Step 1/5] SCOPE DETECTION`
+## 4. Verify
 
-**1a. Parse arguments and identify changed files:**
+For each finding, re-read the cited line in full context: surrounding guards can make an isolated pattern safe, and a wrong line number voids the finding. Resolve contradictions, such as identical code rated differently in two files. Check reachability from the attack surface: unreachable code is at most INFO. Remove findings that fail; where exploitability stays uncertain, set confidence to LOW and say why.
 
-- If `$ARGUMENTS` contains a file or folder path, audit those specific files.
-- If `$ARGUMENTS` is empty, detect changed files from git:
+## 5. Report
 
-```bash
-git diff --name-only HEAD  # unstaged changes
-git diff --name-only --cached  # staged changes
-git diff --name-only main...HEAD  # all branch changes (fallback: master)
-```
+Report at most 25 findings, most severe first, and state how many were cut. With no verified finding, say "No security issues found"; never invent one.
 
-If no changes found and no arguments provided, ask the user which files to audit.
-
-**1b. Classify the scope:**
-
-| Signal | Detection |
-|--------|-----------|
-| Language | File extensions (.rs, .ts, .py, .go, .java, etc.) |
-| Framework | Import statements, manifest files |
-| Risk tier | Auth/billing/crypto = HIGH, business logic = MEDIUM, UI/docs = LOW |
-
-**1c. Read all changed files** using the Read tool. For large diffs (>20 files), prioritize:
-1. Files touching auth, session, crypto, database, user input
-2. New files (more likely to have new vulnerabilities)
-3. Files with the most lines changed
-
-### Step 2 — Threat Model
-
-Print: `[Step 2/5] THREAT MODEL`
-
-Before auditing, build a lightweight threat model from the files read in Step 1:
-
-- **Trust boundaries:** Where does user input enter the system? Where does privileged data exit? Identify the boundary between trusted and untrusted data.
-- **Data flows:** Trace user input paths: input source → processing → storage → output. Which functions touch untrusted data?
-- **Attack surface:** Which changed files are directly exposed to external input? (HTTP handlers, CLI parsers, message consumers, public API endpoints, file upload handlers)
-- **Risk context:** What is the business domain of the changed code? Auth/payment/admin code demands stricter scrutiny than internal tooling.
-
-Output a 3-5 line threat model summary. This summary guides severity calibration in Step 3 — a pattern in auth code may be CRITICAL while the same pattern in an internal CLI tool is MEDIUM.
-
-### Step 3 — Three-Layer Audit
-
-Print: `[Step 3/5] AUDIT`
-
-Run three focused analysis passes sequentially. Each pass reads the same files but checks a narrow subset of the [security checklist](references/security-checklist.md). Narrow focus per pass reduces context confusion and improves precision.
-
-**Layer 1 — SAST Patterns** (checklist sections 1, 5, 8):
-Check injection (SQL, XSS, command, path traversal, template), data handling (deserialization, input validation, sensitive data exposure), and AI-generated code anti-patterns. Pattern-matching focus — look for known vulnerable code shapes.
-
-**Layer 2 — Secrets & Configuration** (checklist sections 3, 4, 6, 7):
-Check hardcoded credentials, API keys, weak crypto, insecure random, debug modes, CORS misconfiguration, missing security headers, CSRF, SSRF, dependency CVEs. Grep-focused — scan for secret patterns and misconfigured values.
-
-**Layer 3 — Logic & Authorization** (checklist section 2, cross-cutting):
-Check broken access control, authentication bypass, IDOR, privilege escalation, missing auth middleware, ownership validation gaps. Reasoning-focused — use the threat model from Step 2 to evaluate whether access checks exist on every trust boundary crossing.
-
-**For each finding, record:**
-- Severity: CRITICAL / HIGH / MEDIUM / LOW / INFO
-- Confidence: HIGH / MEDIUM / LOW
-- File and line number
-- Vulnerability type (CWE ID)
-- Description of the issue and why it matters
-- Reasoning: 1-2 sentences explaining the severity and confidence assessment
-- Specific remediation with code example
-
-After all three layers, merge findings and deduplicate. If two layers flagged the same line for different reasons, combine into one finding with the higher severity.
-
-**Findings cap:** Max 25 findings in the final report. Beyond 25, report the top 25 by severity (CRITICAL first, then HIGH, etc.) and note the total count of remaining findings.
-
-### Step 4 — Verify
-
-Print: `[Step 4/5] VERIFY`
-
-Self-check before reporting. For each finding from Step 3:
-
-1. **Re-read the cited file at the cited line.** Does the vulnerability hold in full context? A pattern that looks vulnerable in isolation may be safe with surrounding guards.
-2. **Check for contradictions.** Did you flag a pattern as vulnerable in one file but safe in another with identical code? Resolve the inconsistency.
-3. **Verify file:line accuracy.** Confirm every cited line number matches the actual code. Hallucinated line numbers invalidate the finding.
-4. **Assess exploitability using the threat model.** Is the vulnerable code reachable from the attack surface identified in Step 2? Unreachable code is at most INFO.
-5. **Prune or downgrade failed findings.** Remove findings that fail verification. Downgrade findings where exploitability is uncertain (reduce confidence to LOW, add a note).
-
-### Step 5 — Report
-
-Print: `[Step 5/5] REPORT`
-
-Output the structured security report using the format below.
-
-## Output Format
-
-```markdown
+````markdown
 ## Security Audit Report
 
-**Scope:** {N} files analyzed | Language: {lang} | Framework: {framework}
-**Threat Model:** {3-5 line summary from Step 2}
+**Scope:** {N} files analyzed | Language: {lang} | Framework: {framework} | Skipped: {files and reason, or none}
+**Threat Model:** {3-5 line summary}
 **Risk Summary:** {N} CRITICAL | {N} HIGH | {N} MEDIUM | {N} LOW | {N} INFO
+**Must fix before merge:** {CRITICAL and HIGH IDs}
+**Flag for human review:** {LOW-confidence IDs, any severity}
 
 ### CRITICAL
 
@@ -166,8 +59,8 @@ Output the structured security report using the format below.
 - **File:** `path/to/file.ext:42`
 - **Type:** CWE-XXX: {Vulnerability Name}
 - **Severity:** CRITICAL | **Confidence:** {HIGH/MEDIUM/LOW}
-- **Description:** {What is wrong and why it's dangerous}
-- **Reasoning:** {1-2 sentences: why this severity, why this confidence, exploitability assessment}
+- **Description:** {What is wrong and why it is dangerous}
+- **Reasoning:** {1-2 sentences: why this severity, why this confidence, exploitability}
 - **Remediation:**
   ```{lang}
   // Before (vulnerable)
@@ -194,96 +87,31 @@ Output the structured security report using the format below.
 
 ### Summary
 
-- **Total findings:** {N} ({N} verified, {N} pruned in Step 4)
-- **Must fix before merge:** {list CRITICAL + HIGH IDs}
-- **Recommended fixes:** {list MEDIUM IDs}
-- **Flag for human review:** {list findings with LOW confidence, regardless of severity}
-- **No action required:** {list LOW + INFO IDs}
-```
+- **Total findings:** {N} ({N} verified, {N} pruned in verification, {N} beyond the cap)
+- **Recommended fixes:** {MEDIUM IDs}
+- **No action required:** {LOW and INFO IDs}
+````
 
-## Severity Definitions
+## Severity
 
 | Severity | Criteria | Action |
 |----------|----------|--------|
-| CRITICAL | Exploitable remotely, no auth needed, data breach/RCE risk | Block merge, fix immediately |
+| CRITICAL | Exploitable remotely, no auth needed, data breach or RCE risk | Block merge, fix immediately |
 | HIGH | Exploitable with some prerequisites, auth bypass, significant data exposure | Block merge, fix before release |
 | MEDIUM | Limited exploitability, defense-in-depth violation, information disclosure | Fix recommended |
 | LOW | Best practice violation, minor information leak, hardening opportunity | Fix when convenient |
 | INFO | Observation, code smell, potential future risk | No action required |
 
-## Confidence Definitions
+## Confidence
 
-| Confidence | Criteria | Triage Impact |
+| Confidence | Criteria | Triage impact |
 |------------|----------|---------------|
-| HIGH | Full dataflow traced source-to-sink, pattern unambiguous, no mitigating context found, verified in Step 4 | Trust the severity rating |
+| HIGH | Full dataflow traced source to sink, pattern unambiguous, no mitigating context found, verified | Trust the severity rating |
 | MEDIUM | Pattern matches but mitigating context is possible, or dataflow partially traced | Verify manually before acting |
-| LOW | Suspicious pattern but insufficient context to confirm exploitability, or uncertain whether guards exist elsewhere | Flag for human review regardless of severity |
+| LOW | Suspicious pattern, but insufficient context to confirm exploitability or whether guards exist elsewhere | Flag for human review regardless of severity |
 
-## Hard Rules
+**Complete when:** every file in scope was read and examined through all three lenses, every reported finding survived verification with an accurate `file:line`, severity, confidence, reasoning, and code fix, and no file was modified.
 
-1. Read ALL changed files before auditing — never audit from memory or assumptions.
-2. Build a threat model BEFORE auditing — never assess severity without context.
-3. Run ALL three audit layers for every file — do not skip layers based on file type.
-4. Every finding must include file:line, severity, confidence, reasoning, and a specific remediation with code.
-5. CRITICAL and HIGH findings must include a Before/After code example.
-6. Never downplay severity — if it's exploitable remotely without auth, it's CRITICAL.
-7. Never inflate severity — if you're uncertain about exploitability, lower the confidence instead.
-8. Verify every finding before reporting — re-read the cited line in context.
-9. If no vulnerabilities found, state "No security issues found" — do not invent findings.
-10. Do NOT modify any files — this is a read-only audit. Remediation is code examples only.
-11. Print `[Step N/5]` progress headers before each step.
+## Sources
 
-## DO NOT
-
-- Skip the scope detection or threat model — you need context before auditing.
-- Audit files that haven't changed (unless the user explicitly asks for a full audit).
-- Report style issues or non-security code quality concerns — this is a security-only audit.
-- Mark known-safe patterns as vulnerabilities (e.g., prepared statements are not SQL injection). See the False Positive examples in the [security checklist](references/security-checklist.md#9-calibration-examples).
-- Provide vague remediations like "validate input" — always show specific fixed code.
-- Report a finding without a confidence level — every finding needs both severity AND confidence.
-
-## Error Handling
-
-| Scenario | Action |
-|----------|--------|
-| No git changes found and no arguments provided | Ask the user which files to audit. Do not audit the entire repo. |
-| File is unreadable (binary, permissions, encoding) | Skip the file, note it in the report scope line. |
-| Empty diff (file listed as changed but no content diff) | Skip the file, do not flag as a finding. |
-| Binary files in changeset (images, compiled assets) | Skip — binary files are outside SAST scope. Note in scope line. |
-| Git commands fail (not a git repo, no main/master branch) | Fall back to `$ARGUMENTS` only. If no arguments, ask the user. |
-
-## Constraints (Three-Tier)
-
-### ALWAYS
-- Read ALL changed files before auditing
-- Build a threat model before the audit passes
-- Run ALL three audit layers for every file
-- Include file:line, severity, confidence, reasoning, and code remediation for every finding
-- Verify findings by re-reading cited lines before reporting
-
-### ASK FIRST
-- Nothing — this is a read-only audit skill
-
-### NEVER
-- Modify any file — this is a read-only audit (remediation is code examples only)
-- Downplay severity — if it's exploitable remotely without auth, it's CRITICAL
-- Inflate severity — if exploitability is uncertain, lower confidence instead of raising severity
-- Invent findings when no vulnerabilities exist — state "No security issues found"
-- Report style issues or non-security concerns
-- Report a finding without both severity and confidence
-
-## Done When
-
-- [ ] Changed files identified and read (Step 1)
-- [ ] Threat model built with trust boundaries and attack surface (Step 2)
-- [ ] All three audit layers completed for every file (Step 3)
-- [ ] All findings verified by re-reading cited lines (Step 4)
-- [ ] Structured report produced with severity + confidence ratings (Step 5)
-- [ ] Every CRITICAL/HIGH finding includes before/after code remediation
-- [ ] No files modified — this is a read-only audit
-
-## References
-
-- [Security Checklist](references/security-checklist.md) — detailed vulnerability patterns per category with language-specific indicators, remediation templates, and calibration examples
-- [Agent Boundaries](@~/.claude/skills/_shared/agent-boundaries.md) — shared agent delegation rules
-- [Three-Tier Constraints](@~/.claude/skills/_shared/three-tier-constraints.md) — ALWAYS/ASK FIRST/NEVER model
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

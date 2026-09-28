@@ -24,8 +24,11 @@ equivalent behavior across Codex and Claude Code.
 - Files are concatenated root to leaf. Nearer project guidance appears later.
 - The combined project chain stops at `project_doc_max_bytes`, 32 KiB by
   default.
+- Current GPT models follow `AGENTS.md` and skill instructions closely; unclear
+  or conflicting guidance can make them pause early and leave work unfinished.
 
-Source: [OpenAI, Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
+Sources: [OpenAI, Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md);
+[OpenAI, Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)
 
 ### Claude Code
 
@@ -52,11 +55,12 @@ to infer, has a narrow valid scope, and can be checked. Then place it once:
 | Candidate | Destination |
 |---|---|
 | One-off task constraint | Current prompt |
+| Preference or fact learned incidentally during work | Claude Code auto-memory, not `CLAUDE.md` |
 | Personal default across repositories | Global `AGENTS.md` |
 | Shared durable repository rule | Root `AGENTS.md` |
 | Subtree-specific rule | Nested `AGENTS.md` plus Claude bridge |
 | Claude-only path rule | `.claude/rules/*.md` |
-| Long architecture or policy knowledge | Linked repository documentation |
+| Long architecture or policy knowledge | Linked repository documentation, or the code that states it (tests, schemas, mockups) |
 | Repeatable task procedure | Skill |
 | Objective invariant | Test, type, linter, hook, or CI |
 | Codex runtime setting | `.codex/config.toml` or another Codex surface |
@@ -65,6 +69,13 @@ Reject:
 
 - repository tours that duplicate discoverable structure;
 - generic advice such as "write clean code" or "be careful";
+- reasoning nudges such as "think carefully" or "think step by step": current
+  models already reason before replying, and depth is an effort setting;
+- sediment gates ("ask before", "confirm first") written to restrain an older
+  model, unless they protect an irreversible or externally visible action;
+- worst-case absolutes ("never write multi-line comments") where a pointer to
+  the local standard ("match the surrounding code's comment density") lets the
+  agent judge each case;
 - exhaustive style rules already enforced by tooling;
 - guessed commands, architecture, ownership, or product behavior;
 - contradictory layers that depend on model precedence;
@@ -85,6 +96,10 @@ Grade every retained line:
 7. **Verification**: identify an inspectable completion signal.
 8. **Uniqueness**: keep the meaning in one authoritative location.
 9. **Context value**: remove the line if the agent behaves the same without it.
+   The test is model-relative: rerun it when the models change.
+10. **Model neutrality**: where Codex and Claude defaults diverge (when to stop,
+    how much to delegate, how deep to verify, reply style), state the target
+    behavior once in shared guidance instead of correcting one model's quirk.
 
 Prefer concise headings and short rules. Explain rationale only when it prevents
 misapplication. Put consequential guidance before lower-risk conventions.
@@ -127,9 +142,12 @@ portability and for the ability to add a provider-specific tail.
 Do not assume guidance improves performance. Recent empirical work reports
 mixed outcomes: one study found higher inference cost without general success
 gains, while another associated `AGENTS.md` with lower median runtime and token
-usage. Favor non-standard practices that agents cannot infer, and use
-representative A/B tasks when the performance impact matters.
+usage. Anthropic removed over 80% of Claude Code's system prompt for its
+Claude 5 generation models with no measurable loss on its coding evaluations.
+Favor non-standard practices that agents cannot infer, and use representative
+A/B tasks when the performance impact matters.
 
 Sources:
 [Gloaguen et al., 2026](https://arxiv.org/abs/2602.11988);
-[Lulla et al., 2026](https://arxiv.org/abs/2601.20404).
+[Lulla et al., 2026](https://arxiv.org/abs/2601.20404);
+[Anthropic, The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/).

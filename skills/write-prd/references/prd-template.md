@@ -16,10 +16,10 @@
 
 {Specific, numbered problem description. Answer: What is the problem? Who has it? Why now?}
 
-1. {Problem 1 — specific pain point with evidence from research or user data}
+1. {Problem 1: specific pain point with evidence from research or user data}
 2. {Problem 2}
 
-**Why now:** {What has changed that makes solving this urgent — market shift, user demand, competitive pressure, compliance deadline}
+**Why now:** {What has changed that makes solving this urgent: market shift, user demand, competitive pressure, compliance deadline}
 
 ## Overview
 
@@ -68,13 +68,13 @@ Key findings that informed this PRD:
 ## Assumptions & Constraints
 
 ### Assumptions (to validate)
-- {Assumption 1 — what we believe to be true, based on {evidence}}
+- {Assumption 1: what we believe to be true, based on {evidence}}
 - {Assumption 2}
 
 ### Hard Constraints
-- {Constraint 1 — e.g., must work with existing auth system}
-- {Constraint 2 — e.g., legal/compliance requirement}
-- {Constraint 3 — e.g., must ship before {date}}
+- {Constraint 1: e.g., must work with existing auth system}
+- {Constraint 2: e.g., legal/compliance requirement}
+- {Constraint 3: e.g., must ship before {date}}
 
 ## Quality Gates
 
@@ -165,11 +165,11 @@ Systematic coverage of unhappy paths. Evidence shows earlier defect discovery si
 | # | Scenario | Trigger | Expected Behavior | User Message |
 |---|----------|---------|-------------------|--------------|
 | 1 | {Empty state} | {First-time user, zero data} | {Show onboarding prompt} | "{CTA message}" |
-| 2 | {Loading state} | {Async operation in progress} | {Show skeleton/spinner} | — |
+| 2 | {Loading state} | {Async operation in progress} | {Show skeleton/spinner} | None |
 | 3 | {Error state} | {API failure, validation error} | {Show actionable error} | "{Error message with next step}" |
 | 4 | {Network degradation} | {Slow/offline connection} | {Graceful degradation behavior} | "{Offline message}" |
 | 5 | {Boundary value} | {Min/max/zero/overflow input} | {Explicit behavior at limits} | "{Validation message}" |
-| {N} | {Additional relevant scenarios from Phase 3e} | ... | ... | ... |
+| {N} | {Additional relevant scenarios from Phase 3} | ... | ... | ... |
 
 ## Risks & Mitigations
 
@@ -181,27 +181,27 @@ Systematic coverage of unhappy paths. Evidence shows earlier defect discovery si
 
 ## Non-Goals
 
-Explicit boundaries — what this version does NOT include:
+What this version explicitly does NOT include:
 
-- {What this feature explicitly will NOT do — and why}
-- {Feature that is out of scope — and when it might be revisited}
+- {What this feature explicitly will NOT do, and why}
+- {Feature that is out of scope, and when it might be revisited}
 - {Adjacent functionality deferred to future work}
 
 ## Files NOT to Modify
 
 {Only include if a codebase exists. Critical for AI agents.}
-- `path/to/core/infrastructure.ext` — {reason}
-- `path/to/shared/config.ext` — {reason}
+- `path/to/core/infrastructure.ext`: {reason}
+- `path/to/shared/config.ext`: {reason}
 
 ## Technical Considerations
 
-Frame as questions for engineering input — not mandates:
+Frame as questions for engineering input, not mandates:
 
-- **Architecture:** {Key decision} — recommended: {option A}. Engineering to confirm feasibility.
-- **Data Model:** {Schema changes needed?} — {option A} vs {option B}. Trade-off: {description}.
-- **API Design:** {New endpoints needed?} — recommended: {approach}. Pagination strategy: cursor-based or offset-based?
-- **Dependencies:** {New libraries or services?} — {library} (v{x}) recommended by research. Alternatives: {alt}.
-- **Migration:** {Data migration needs?} — backward compatibility requirement: {yes/no}. Rollback plan: {description}.
+- **Architecture:** {Key decision}; recommended: {option A}. Engineering to confirm feasibility.
+- **Data Model:** {Schema changes needed?} {option A} vs {option B}. Trade-off: {description}.
+- **API Design:** {New endpoints needed?} Recommended: {approach}. Pagination strategy: cursor-based or offset-based?
+- **Dependencies:** {New libraries or services?} {library} (v{x}) recommended by research. Alternatives: {alt}.
+- **Migration:** {Data migration needs?} Backward compatibility requirement: {yes/no}. Rollback plan: {description}.
 
 ## Success Metrics
 
@@ -212,8 +212,8 @@ Frame as questions for engineering input — not mandates:
 
 ## Open Questions
 
-- {Question 1 — who should answer, by when, what depends on this}
-- {Question 2 — who should answer, by when, what depends on this}
+- {Question 1: who should answer, by when, what depends on this}
+- {Question 2: who should answer, by when, what depends on this}
 [/PRD]
 ```
 
@@ -222,14 +222,14 @@ Frame as questions for engineering input — not mandates:
 ## Format Rules for Downstream Compatibility
 
 ### Story ID Format
-- Stories: `US-NNN` — zero-padded three digits, sequential across all epics
-- Epics: `EP-NNN` — zero-padded three digits
+- Stories: `US-NNN`: zero-padded three digits, sequential across all epics
+- Epics: `EP-NNN`: zero-padded three digits
 
 ### Heading Hierarchy
-- `#` — PRD title
-- `##` — Top-level sections (Changelog, Problem Statement, Overview, Goals, Target Users, Research Findings, Assumptions & Constraints, Quality Gates, Epics & User Stories, Functional Requirements, Non-Functional Requirements, Edge Cases & Error States, Risks & Mitigations, Non-Goals, Files NOT to Modify, Technical Considerations, Success Metrics, Open Questions)
-- `###` — Epic headings within Epics & User Stories section, or persona headings in Target Users
-- `####` — Individual story headings within an epic
+- `#`: PRD title
+- `##`: Top-level sections (Changelog, Problem Statement, Overview, Goals, Target Users, Research Findings, Assumptions & Constraints, Quality Gates, Epics & User Stories, Functional Requirements, Non-Functional Requirements, Edge Cases & Error States, Risks & Mitigations, Non-Goals, Files NOT to Modify, Technical Considerations, Success Metrics, Open Questions)
+- `###`: Epic headings within Epics & User Stories section, or persona headings in Target Users
+- `####`: Individual story headings within an epic
 
 ### Acceptance Criteria Format
 - GitHub Flavored Markdown task list: `- [ ] criterion`
@@ -249,9 +249,9 @@ Frame as questions for engineering input — not mandates:
 
 ### Story Metadata
 Each story carries inline metadata:
-- `**Priority:**` — P0 (must have), P1 (should have), P2 (could have)
-- `**Size:**` — XS (1pt), S (2pt), M (3pt), L (5pt), XL (8pt)
-- `**Dependencies:**` — "None" or "Blocked by US-NNN, US-NNN"
+- `**Priority:**`: P0 (must have), P1 (should have), P2 (could have)
+- `**Size:**`: XS (1pt), S (2pt), M (3pt), L (5pt), XL (8pt)
+- `**Dependencies:**`: "None" or "Blocked by US-NNN, US-NNN"
 
 ### File Naming
 - PRD: `./tasks/prd-{feature-name-kebab-case}.md`
@@ -309,7 +309,7 @@ Any → CANCELLED
 
 Ownership is strict: `/implement-epic` owns `TODO` → `IN_PROGRESS` → `IN_REVIEW` and never writes `DONE`. `/review-epic` alone writes `DONE`, the `DONE` → `IN_REVIEW` downgrade, and `BLOCKED`. Certification never comes from the skill that wrote the code.
 
-- `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the matching story slice in Phase 2
+- `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the story
 - `IN_PROGRESS` → `IN_REVIEW`: when `/implement-epic` has implemented the story, wired it into a real execution path, and passed its final validation bundle. Implementation is complete but uncertified.
 - `IN_REVIEW` → `DONE`: when `/review-epic` proves every criterion from a real entry point, required gates pass, and no blocking finding remains
 - `DONE` → `IN_REVIEW`: when `/review-epic` disproves completion or leaves required manual verification
@@ -330,7 +330,7 @@ Ownership is strict: `/implement-epic` owns `TODO` → `IN_PROGRESS` → `IN_REV
 ### PRD Status
 
 - `DRAFT`: during brainstorming and writing
-- `READY`: user approved, ready for implementation
+- `READY`: written and self-validated, ready for implementation
 - `IN_PROGRESS`: at least one story started
 - `IN_REVIEW`: every epic is `IN_REVIEW` or `DONE`, and at least one is not `DONE`
 - `DONE`: all epics DONE

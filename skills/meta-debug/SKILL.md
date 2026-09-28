@@ -17,7 +17,7 @@ If it does not reproduce, do not guess: check for intermittence or environment d
 
 Local evidence first: the failing file and the smallest surrounding function, type, fixture, or config; user-code stack frames before framework or generated ones; targeted `rg` on the failing symbol, error code, or key; the manifest or lockfile only when a version or setup is a plausible cause. Prefer observations that eliminate several explanations at once. Keep at most three or four live hypotheses, internally, and surface them only if diagnosis stalls.
 
-Delegate only a named gap local inspection cannot settle, at most two helpers per run, read-only: `agent-explorer` after focused reads leave a cross-module, concurrency, generated-boundary, or state interaction unresolved; `docs-researcher` for one exact version-sensitive API or configuration question; `web-researcher` for a plausible known external bug or undocumented behavior once local and official evidence are exhausted. See [Helper Protocols](references/helper-protocols.md) when delegating. A failed helper is not retried through another role.
+Delegate only a named gap local inspection cannot settle, at most two helpers per run, read-only: `agent-explorer` after focused reads leave a cross-module, concurrency, generated-boundary, or state interaction unresolved; `docs-researcher` for one exact version-sensitive API or configuration question; `web-researcher` for a plausible known external bug or undocumented behavior once local and official evidence are exhausted. See [Helper Protocols](references/helper-protocols.md) when delegating. A failed helper is not retried through another role, and a helper's finding is checked against the code before it changes the diagnosis.
 
 Regression history: read-only `git log`, `git show`, `git diff`, `git blame`. `git bisect` only with explicit user approval, a clean or isolated worktree, known good and bad bounds, a fast deterministic non-destructive reproducer, and `git bisect reset` on every exit path.
 
@@ -43,3 +43,7 @@ Receipt: root cause and evidence, files changed and why, exact verification comm
 
 - `/meta-debug TS2322 in src/auth/session.ts after upgrading the auth package`
 - `/meta-debug The worker occasionally deadlocks after cancellation`
+
+## Sources
+
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

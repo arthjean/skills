@@ -11,7 +11,9 @@ instruction adherence, not documentation completeness.
 
 Read [the authoring rubric](references/authoring-rubric.md) before evaluating or
 changing guidance. It contains the current provider semantics, placement rules,
-bridge patterns, and acceptance checks.
+bridge patterns, and acceptance checks. For the wording of each line (pointers,
+completion criteria, negation, pruning), apply the `writing-for-agents` skill;
+this skill owns scope, placement, provider semantics, and bridges.
 
 ## 1. Fix the scope
 
@@ -30,6 +32,8 @@ applicable ancestors and inspect:
 - `AGENTS.md` and `AGENTS.override.md`
 - `CLAUDE.md` and `CLAUDE.local.md`
 - `.claude/rules/**/*.md`
+- repository skills (`.agents/skills/`, `.claude/skills/`), for instructions
+  that conflict with the chain
 - `.codex/config.toml` when fallback names or byte limits matter
 
 Keep global configuration out of scope for a repository request, and keep
@@ -61,17 +65,21 @@ and verification signal.
 
 ## 3. Author the canonical chain
 
-Write `AGENTS.md` as a map, not an encyclopedia. Use direct, imperative,
+Write `AGENTS.md` as a map, not an encyclopedia: a line or two on what the
+repository is for, then what the code does not reveal. Use direct, imperative,
 repository-specific language. State exact commands and boundaries. Pair hard
 guardrails with the safe path or exception. Link to detailed documentation
 instead of copying it.
 
 Order content by consequence:
 
-1. critical safety and authorization boundaries;
-2. exact setup, build, test, and validation commands;
-3. architecture and ownership boundaries that code does not reveal;
-4. scoped workflow and delivery expectations;
+1. critical safety and authorization boundaries, including what the agent does
+   without asking and the few actions that stop for the human;
+2. exact setup, build, test, and validation commands, and which checks each
+   kind of change needs;
+3. architecture, ownership boundaries, and gotchas that code does not reveal;
+4. scoped workflow and delivery expectations, including the end-of-run report
+   shape;
 5. pointers to detailed knowledge.
 
 Create nested `AGENTS.md` files only when a rule genuinely applies to a
@@ -118,8 +126,13 @@ only when the user authorized the associated external execution or cost:
 
 - Codex: ask it to list loaded instruction files in order and summarize the
   effective rules from the root and a representative nested directory.
-- Claude Code: inspect `/context` for the expected memory files, then verify the
-  effective rules from the same directories.
+- Claude Code: inspect `/context` for the expected memory files, run `/doctor`
+  to rightsize `CLAUDE.md` and skills, then verify the effective rules from the
+  same directories.
+- Either agent, when it pauses, asks for confirmation, or diverges from the
+  request: ask it to name the exact file, quote the instruction responsible,
+  and separate what the file requires from its own reading. This locates silent
+  or conflicting guidance fastest.
 
 Inspect the final files or diff. Report the canonical source, scopes created,
 material rules excluded, and validation evidence. For an audit, report proposed
@@ -127,3 +140,21 @@ changes without applying them.
 
 **Complete when:** both effective chains are coherent, within budget, grounded
 in repository evidence, and validated to the maximum authorized level.
+
+## Sources
+
+Read the matching source when tuning guidance for that model family; model
+defaults change at each release.
+
+- [The new rules of context engineering for Claude 5 generation
+  models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/)
+  (Anthropic, 2026-07-24): lightweight `CLAUDE.md` spent on gotchas,
+  progressive disclosure, judgment over worst-case rules, auto-memory,
+  `/doctor` rightsizing.
+- [Getting the most out of Opus
+  5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run)
+  (Anthropic, 2026-09-22): finish lines, named stops and the end-of-run report
+  shape in `CLAUDE.md`, reasoning nudges to delete.
+- [Using GPT-6](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)
+  (OpenAI, GPT-6 Astra guide): sensitivity to `AGENTS.md` and skills, explicit
+  precedence, the pause audit, approval after concrete work.

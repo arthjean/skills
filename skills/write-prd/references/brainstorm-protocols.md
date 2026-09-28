@@ -1,436 +1,132 @@
-# Brainstorm Protocols — Agent Prompts, Question Templates, and Validation
+# Brainstorm protocols
 
-This file is the single source of truth for all templates used by `/write-prd`. SKILL.md orchestrates; this file provides the content.
+Reference for [`write-prd`](../SKILL.md): the helper briefs for Phase 2, the edge-case list and devil's advocate axes for Phase 3, the self-validation checklist for Phase 5, and the research brief format. Every decision is the skill's own; nothing here is put to the user.
 
-## Table of Contents
+## Contents
 
-- [Phase 2 — Agent Prompts](#phase-2--agent-prompts)
-- [Phase 3 — Question Templates](#phase-3--research-informed-question-patterns)
-- [PRD Self-Validation Checklist](#prd-self-validation-checklist-phase-5c)
-- [Compressed Research Summary Format](#compressed-research-summary-format)
+- [Helper briefs](#helper-briefs)
+- [Edge-case categories](#edge-case-categories)
+- [Devil's advocate axes](#devils-advocate-axes)
+- [Self-validation checklist](#self-validation-checklist)
+- [Research brief format](#research-brief-format)
 
----
+## Helper briefs
 
-## Phase 2 — Agent Prompts
+### Web research
 
-### 2a — Web Research Prompt Template
+```text
+Research this domain to inform a Product Requirements Document.
 
-```
-Research the following domain to inform a Product Requirements Document.
+Feature: {user_feature_description}
+Domain: {detected_domain}
 
-## Feature Description
-{user_feature_description}
+Cover, in priority order:
+1. Competitive landscape: 3-5 comparable products, how each approaches the feature, what users praise and criticize.
+2. Best practices: authoritative guides, patterns, or frameworks for building it.
+3. Technical patterns: common frameworks, libraries, and architectures, with rationale.
+4. User expectations: the minimum viable set, standard capabilities, delighters.
+5. Security: OWASP-relevant risks for this domain and recommended mitigations.
+6. Common pitfalls: frequent mistakes and failure modes.
+7. Trends: emerging standards or upcoming changes that should shape the design.
 
-## Domain
-{detected_domain}
-
-## Research Priorities (IN ORDER)
-1. **Competitive landscape** — Find 3-5 competitors or comparable products that offer this type of feature. For each: what they offer, how they approach it, what users praise/criticize.
-
-2. **Best practices** — How do industry leaders recommend building this type of feature? What are the authoritative guides, patterns, or frameworks?
-
-3. **Technical patterns** — What frameworks, libraries, or architectures are commonly used? What's the recommended stack for this type of feature?
-
-4. **User expectations** — What do users in this domain typically expect? What's the minimum viable feature set? What delights users?
-
-5. **Security considerations** — What are the OWASP-relevant risks? What security patterns are recommended for this domain?
-
-6. **Common pitfalls** — What mistakes do teams commonly make when building this? What are the failure modes?
-
-7. **Market trends** — Is this domain evolving? Are there emerging standards or upcoming changes that should influence the design?
-
-## Search Strategy
-- Search for "{feature_type} competitors comparison {year}"
-- Search for "{feature_type} best practices {tech_stack}"
-- Search for "{feature_type} implementation guide"
-- Search for "{feature_type} security considerations OWASP"
-- Search for "{feature_type} common mistakes"
-- Include recent year in searches for freshness
-
-## Output Requirements
-Return findings in this structure:
-
-### Competitive Landscape
-[For each competitor: name, approach, strengths, weaknesses, unique features]
-
-### Industry Best Practices
-[Authoritative recommendations with sources]
-
-### Recommended Technical Patterns
-[Frameworks, libraries, architectures with rationale]
-
-### User Expectations
-[Minimum feature set, standard capabilities, delighters]
-
-### Security Considerations
-[Domain-specific risks and recommended mitigations]
-
-### Common Pitfalls
-[Mistakes to avoid, failure modes, anti-patterns]
-
-### Market Trends
-[Emerging standards, upcoming changes, trajectory]
-
-### Sources
-[All URLs as markdown links]
+Budget: 4-6 targeted searches, primary and current sources first. If results are thin, return what you have and name the gaps. Return one section per item above, then Sources as markdown links. Mark anything you could not confirm and say where you looked.
 ```
 
-### 2b — Codebase Exploration Prompt Template
+### Codebase exploration
 
-```
-Explore the codebase to understand the current architecture and constraints for a new feature.
+```text
+Map the codebase constraints for a planned feature. Read-only.
 
-## Planned Feature
-{user_feature_description}
+Feature: {user_feature_description}
+Research context: {compressed_web_research}
 
-## Research Context
-{compressed_web_research}
+Find:
+1. Stack, framework, and architecture pattern.
+2. Similar features already implemented, and how they are structured.
+3. The auth pattern, if the feature involves auth.
+4. The data layer or schema, if the feature involves data.
+5. The routing or API pattern, if the feature adds endpoints.
+6. Testing conventions: framework, structure, coverage.
+7. Shared utilities, components, or services the feature could reuse.
+8. Agent guidance, architecture docs, or coding standards (AGENTS.md, CLAUDE.md, docs/).
+9. Existing PRD conventions in tasks/ or docs/.
+10. Core infrastructure the feature must not modify.
 
-## Exploration Tasks
-1. Identify the project's tech stack, framework, and architecture pattern
-2. Find similar features already implemented — how were they structured?
-3. Identify the authentication/authorization pattern (if the feature involves auth)
-4. Check the database schema or data layer (if the feature involves data)
-5. Find the routing/API pattern (if the feature adds endpoints)
-6. Check testing patterns — framework, structure, coverage conventions
-7. Identify shared utilities, components, or services that the new feature could reuse
-8. Look for CLAUDE.md, architecture docs, or coding standards
-9. Check existing PRDs in tasks/ or docs/ for format conventions
-10. Identify files/modules that should NOT be modified (core infrastructure)
-
-## Output Requirements
-### Tech Stack
-[Languages, frameworks, key dependencies with versions]
-
-### Architecture Pattern
-[How the project is organized, with file:line references]
-
-### Similar Features
-[How comparable features are implemented, patterns to follow]
-
-### Reusable Components
-[Existing code the new feature should use]
-
-### Constraints
-[What the architecture supports and doesn't support]
-
-### Files NOT to Modify
-[Core infrastructure files that should be protected]
-
-### Existing PRD Conventions
-[If PRDs exist, their format and conventions]
+Budget: 15-20 file reads; map the architecture without reading unrelated implementations. Return sections: Tech Stack (with versions), Architecture Pattern (with file:line), Similar Features, Reusable Components, Constraints, Files NOT to Modify, Existing PRD Conventions.
 ```
 
-### 2c — Documentation Lookup Prompt Template
+### Documentation lookup
 
-```
-Look up documentation for libraries and frameworks relevant to a planned feature.
+```text
+Look up library documentation for a feature being planned, not implemented. Read-only.
 
-## Feature
-{feature_description}
+Feature: {feature_description}
+Libraries: {library_list_with_versions}
 
-## Libraries to Look Up
-{library_list_with_versions}
-
-## Focus
-We're PLANNING a feature, not implementing yet. Look up:
-1. What capabilities these libraries provide for our use case
-2. Recommended patterns and architecture from official docs
-3. Limitations or known issues that would affect our design
-4. Configuration or setup requirements we should plan for
-
-## ctx7 CLI Protocol
-Two-step process in the available shell:
-1. bunx ctx7@latest library {library_name} "{query}"  — resolve library ID
-2. bunx ctx7@latest docs {library_id} "{query}"       — fetch documentation
-
-## Important
-- Use ctx7 CLI two-step protocol: library first, then docs
-- Maximum 3 ctx7 calls total (cost/time budget — prioritize the most relevant libraries)
-- Do NOT modify any files — this is read-only research
-- Focus on design-relevant information, not implementation details
+For each library: the capabilities it offers for this use case, the patterns official docs recommend, limitations or known issues that affect the design, and setup or configuration to plan for. Budget: 3 documentation calls, most relevant libraries first. Stay on design-relevant facts.
 ```
 
----
-
-## Phase 3 — Research-Informed Question Patterns
-
-### The Core Principle
-
-Every question MUST follow this pattern:
-
-```
-Based on our research, [specific finding].
-
-{N}. [Question derived from finding]
-   A. [Option informed by research] — [pro from research], [con from research]
-   B. [Alternative from research] — [pro], [con]
-   C. [Hybrid/custom option]
-   D. Other: [describe]
-```
-
-**NEVER ask** vague, ungrounded questions ("What do you want to build?", "How should we handle auth?"). **ALWAYS** trace each option to a research finding.
-
----
-
-### Round 1 — Vision & Scope
-
-**Purpose:** Establish WHAT we're building and WHY, informed by competitive landscape.
-
-```markdown
-## Research Summary
-
-Before we start brainstorming, here's what I found about {domain}:
-
-### Competitive Landscape
-- **{Competitor A}:** {1-2 sentence summary}
-- **{Competitor B}:** {1-2 sentence summary}
-- **Market gap:** {unmet need none address well}
-
-### Key Best Practices
-- {Practice 1}
-- {Practice 2}
-
-### Notable Risk
-- {Top risk from research}
-
-*Based on {N} sources — full details available on request.*
-
----
-
-Now let me ask some questions to shape YOUR vision:
-
-1. {Competitor A} focuses on {approach A}, while {Competitor B} emphasizes {approach B}.
-   What resonates most with YOUR product vision?
-   A. {Approach A} — {pro: from research}, {con: from research}
-   B. {Approach B} — {pro: from research}, {con: from research}
-   C. Combine elements of both — specifically {suggested hybrid}
-   D. Different direction — [describe]
-
-2. Research shows users in {domain} expect at minimum: {X, Y, Z}.
-   Which are must-haves for YOUR first version?
-   A. All of them — full feature parity
-   B. {X and Y} only — defer {Z} to v2
-   C. {X} only — start minimal, iterate fast
-   D. Different priorities — [specify]
-
-3. Who is the primary user of this feature?
-   A. {User type A from research — e.g., "end users (consumers)"}
-   B. {User type B — e.g., "business admins"}
-   C. Both, with different experiences
-   D. Other — [specify]
-
-4. The market gap we identified is: {gap}.
-   Is addressing this gap a priority?
-   A. Yes — make it a core differentiator
-   B. Interesting but not for v1
-   C. No — focus on proven features first
-```
-
----
-
-### Round 2 — Technical Decisions
-
-**Purpose:** Lock in HOW we'll build it, informed by technical research and codebase analysis.
-
-```markdown
-Based on your vision answers and our technical research:
-
-1. For {technical decision A}, research recommends:
-   A. {Pattern A} — used by {companies/frameworks}, {pro}, {con}
-   B. {Pattern B} — recommended by {source}, {pro}, {con}
-   C. {Pattern C} — emerging approach, {pro}, {con}
-   {If codebase exists: "Note: your current codebase uses {existing pattern}."}
-
-2. For data handling, {research finding about data patterns}:
-   A. {Approach A} — {when it's best}
-   B. {Approach B} — {when it's best}
-   C. Align with existing codebase pattern: {pattern}
-
-3. Security research found {domain-specific risk}:
-   A. {Mitigation A from research} — industry standard, {trade-off}
-   B. {Mitigation B from research} — more secure, {trade-off}
-   C. Address in a dedicated security story (defer but track)
-   D. Other approach
-
-4. {If codebase exists}: Your project uses {tech stack}.
-   For this feature, should we:
-   A. Stay fully within the existing stack
-   B. Add {library from research} for {specific capability}
-   C. Evaluate during implementation
-```
-
----
-
-### Round 3 — Scope & Prioritization
-
-**Purpose:** Define boundaries and priorities using MoSCoW informed by research.
-
-```markdown
-Based on our discussion, here are the capabilities I've identified.
-Rate each using MoSCoW:
-
-| # | Capability | Research Context | Your Priority? |
-|---|-----------|-----------------|----------------|
-| 1 | {capability} | {who does it, why it matters} | M / S / C / W |
-| 2 | {capability} | {research context} | M / S / C / W |
-| 3 | {capability} | {research context} | M / S / C / W |
-| ... | ... | ... | ... |
-
-M = Must Have (MVP, blocks launch)
-S = Should Have (important, not blocking)
-C = Could Have (nice-to-have)
-W = Won't Have (out of scope)
-
-Additional scoping questions:
-
-1. Based on the Must Haves, I'd suggest {N} epics with ~{M} stories total.
-   Does this feel right for your timeline?
-   A. Yes, proceed
-   B. Too ambitious — reduce scope
-   C. Too small — add more
-   D. Let me see the breakdown first
-
-2. Should we plan for {future consideration from research}?
-   A. Yes, architect for it now (costs more upfront)
-   B. No, build for current needs only (may need refactoring later)
-```
-
----
-
-### Edge Cases & Error States Round (Phase 3e)
-
-**Purpose:** Systematically identify unhappy paths BEFORE scoping stories. Evidence directionally supports that earlier defect discovery reduces cost significantly (Boehm 1981, NIST 2002).
-
-```markdown
-Before we scope the stories, let's identify which edge cases and error states matter for {feature}.
-
-These 10 categories are the most commonly missed:
-
-| # | Category | Example for {feature} | Relevant? |
-|---|----------|----------------------|-----------|
-| 1 | **Empty states** — first-time user with no data | {specific example} | Y/N |
-| 2 | **Loading states** — what users see during async operations | {specific example} | Y/N |
-| 3 | **Error states** — API failures, validation errors, timeouts | {specific example} | Y/N |
-| 4 | **Network degradation** — slow connection, offline mode | {specific example} | Y/N |
-| 5 | **Permission changes** — access revoked mid-session | {specific example} | Y/N |
-| 6 | **Concurrent modifications** — two users editing simultaneously | {specific example} | Y/N |
-| 7 | **Boundary values** — min/max inputs, zero items, overflow | {specific example} | Y/N |
-| 8 | **Undo/reversal** — can critical actions be reversed? | {specific example} | Y/N |
-| 9 | **Interrupted flows** — session timeout, tab close, browser back | {specific example} | Y/N |
-| 10 | **External dependencies** — third-party service outages | {specific example} | Y/N |
-
-For each category you mark as relevant, I'll either:
-- Create a dedicated error-handling story (for complex cases)
-- Add acceptance criteria to existing stories (for simpler cases)
-
-Which categories apply to your feature?
-```
-
-**Rules:**
-- Always provide feature-specific examples, not generic descriptions
-- Mark categories that research identified as high-risk for this domain
-- Every story must end up with at least one unhappy-path acceptance criterion
-
----
-
-### Quality Gates Round (Phase 3f)
-
-```markdown
-Final essential question — what quality commands must pass for every story?
-
-1. Build/type checking:
-   A. bun run typecheck && bun run lint
-   B. bun run check
-   C. cargo check && cargo clippy && cargo test
-   D. go build ./... && go vet ./...
-   E. Other: [specify]
-
-2. Testing:
-   A. Run full test suite after each story
-   B. Run only affected tests
-   C. No automated tests (manual verification)
-   D. Other: [specify]
-
-3. For UI stories, include visual verification?
-   A. Yes, verify in browser
-   B. No, automated tests sufficient
-```
-
----
-
-### Devil's Advocate Round (Phase 3h)
-
-```markdown
-Before we finalize the scope, our research flagged these concerns:
-
-1. **{Risk}:** {research finding about why this is dangerous}
-   Teams building similar features often struggle with {specific issue}.
-   → Are you comfortable with this, or should we add a mitigation story?
-
-2. **{Assumption}:** We're assuming {X}. But research shows {counter-evidence}.
-   → Should we validate this assumption before building, or proceed?
-
-3. **{Scope risk}:** Based on the {N} stories planned, this is a {size} effort.
-   Research shows success rates drop significantly for PRDs with >20 stories.
-   → Should we phase this into multiple releases?
-
-4. **{Edge case coverage}:** Based on your answers, we'll cover {M} of 10 edge case categories.
-   The uncovered categories are: {list uncovered ones}.
-   → Are you confident these don't apply, or should we reconsider any?
-
-5. **{Missing consideration}:** Research mentioned {thing} that we haven't discussed.
-   → Is this relevant to your use case?
-```
-
----
-
-## PRD Self-Validation Checklist (Phase 5c)
-
-The single source of truth for PRD quality gates. Think step-by-step through each item. For each: cite the specific PRD section that satisfies it. If you cannot cite a section, the check FAILS.
-
-```markdown
-### Pre-Save Validation
-
-| # | Check | Status |
-|---|-------|--------|
-| 1 | Problem Statement clearly articulates WHY (not just WHAT) and includes "Why now" | |
-| 2 | Every subjective word ("fast", "simple", "intuitive", "easy") replaced with measurable target | |
-| 3 | Non-Goals section present with at least 2 explicit exclusions | |
-| 4 | Edge Cases & Error States table has at least 2 documented scenarios | |
-| 5 | Every user story has at least one unhappy-path acceptance criterion | |
-| 6 | Success Metrics table includes baseline (current), target, and timeframe columns | |
-| 7 | NFRs all have specific numbers (latency in ms, uptime %, concurrent users, etc.) | |
-| 8 | Target Users section includes pain points and current workarounds | |
-| 9 | Risks & Mitigations table has probability and impact ratings | |
-| 10 | Two engineers reading this independently would build the same thing | |
-| 11 | No story exceeds XL (8 story points) — split if needed | |
-| 12 | Total stories ≤ 20 (or explicitly phased into multiple releases) | |
-| 13 | Assumptions section documents what we believe but haven't validated | |
-| 14 | Technical Considerations framed as questions for engineering input, not mandates | |
-| 15 | Changelog section present with initial version entry | |
-
-If any check fails → fix before saving.
-```
-
-**The simplest quality test:** Would two engineers, reading this PRD independently, build the same thing? If no, the PRD is not ready.
-
----
-
-## Compressed Research Summary Format
-
-Internal format for passing Phase 2 output to Phase 3. Store after Phase 2c synthesis. Target: < 300 words internal, < 500 words when presented to user.
+## Edge-case categories
+
+Select the categories that apply, each with an example specific to the feature, and mark those research flagged as high-risk for the domain. Complex cases get a dedicated story; simple ones become acceptance criteria on existing stories.
+
+| # | Category | Covers |
+|---|----------|--------|
+| 1 | Empty states | First-time user with no data |
+| 2 | Loading states | What users see during async operations |
+| 3 | Error states | API failures, validation errors, timeouts |
+| 4 | Network degradation | Slow connection, offline mode |
+| 5 | Permission changes | Access revoked mid-session |
+| 6 | Concurrent modifications | Two users editing simultaneously |
+| 7 | Boundary values | Min and max inputs, zero items, overflow |
+| 8 | Undo and reversal | Whether critical actions can be reversed |
+| 9 | Interrupted flows | Session timeout, tab close, browser back |
+| 10 | External dependencies | Third-party service outages |
+
+## Devil's advocate axes
+
+Challenge the plan on each axis. Every concern that survives gets a mitigation, a validation story, or an explicit acceptance in the decision log:
+
+1. **Risk**: the top risks research raised, and where teams building similar features struggle.
+2. **Assumption**: each belief the plan rests on that research does not confirm, or contradicts. High-risk ones become validation spikes.
+3. **Scope**: the total effort; more than 20 stories means phased releases.
+4. **Edge-case coverage**: the categories left out, and why each does not apply.
+5. **Missing consideration**: anything research raised that no decision addressed.
+
+## Self-validation checklist
+
+For each check, cite the PRD section that satisfies it. A check with no citable section fails; fix it before saving.
+
+| # | Check |
+|---|-------|
+| 1 | Problem Statement says why, not only what, and includes "Why now" |
+| 2 | Every subjective word ("fast", "simple", "intuitive", "easy") is replaced with a measurable target |
+| 3 | Non-Goals lists at least 2 explicit exclusions |
+| 4 | Edge Cases & Error States documents at least 2 scenarios |
+| 5 | Every user story has at least one unhappy-path acceptance criterion |
+| 6 | Success Metrics has baseline, target, and timeframe columns |
+| 7 | Every NFR has a specific number (latency in ms, uptime %, concurrent users) |
+| 8 | Target Users includes pain points and current workarounds |
+| 9 | Risks & Mitigations rates probability and impact |
+| 10 | Two engineers reading the PRD independently would build the same thing |
+| 11 | No story exceeds XL (8 points) |
+| 12 | Total stories are 20 or fewer, or explicitly phased into several releases |
+| 13 | Assumptions lists what the PRD believes but has not validated |
+| 14 | Technical Considerations are framed as questions for engineering input, not mandates |
+| 15 | Changelog has the initial version entry |
+
+## Research brief format
+
+The Phase 2 synthesis, printed at the start of Phase 3. Under 300 words.
 
 ```markdown
 ## Research Brief
 
 ### Competitors
-- {Name}: {approach} — {strength}, {weakness}
-- {Name}: {approach} — {strength}, {weakness}
+- {Name}: {approach}; {strength}, {weakness}
 
 ### Best Practices
-1. {Practice from authoritative source}
-2. {Practice from authoritative source}
+1. {Practice} ({source})
 
 ### Technical Recommendations
 - Stack: {recommended}
@@ -438,11 +134,11 @@ Internal format for passing Phase 2 output to Phase 3. Store after Phase 2c synt
 - Libraries: {lib1} (v{x}), {lib2} (v{y})
 
 ### Risks
-- {Risk 1}: {mitigation}
-- {Risk 2}: {mitigation}
+- {Risk}: {mitigation}
 
 ### User Expectations (minimum)
-- {Feature 1}
-- {Feature 2}
-- {Feature 3}
+- {Feature}
+
+### Codebase Constraints
+- {Constraint} (`file:line`), when a codebase exists
 ```

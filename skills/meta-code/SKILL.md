@@ -27,11 +27,15 @@ An independent verifier (one `web-researcher` challenge on a contested claim, or
 
 ## Answer
 
-Lead with the direct answer or recommendation. Keep only evidence that changes the conclusion or a trade-off. Cite every sourced claim inline from collected evidence; a pointer that did not come from a tool result is fabricated. Separate verified facts from inference, and name disagreements only when they change the recommendation. Give confidence or open gaps only when they affect what the user can do next. Write memory only on explicit request.
+Lead with the direct answer or recommendation. Keep only evidence that changes the conclusion or a trade-off. Cite every sourced claim inline from collected evidence; a pointer that did not come from a tool result is fabricated. Check a helper's pointer yourself before the conclusion rests on it. Separate verified facts from inference, and name disagreements only when they change the recommendation. Give confidence or open gaps only when they affect what the user can do next. Write memory only on explicit request.
 
-**Complete when:** every obligation is answered or its gap is stated, every sourced claim maps to a retrieved URL, doc ID, command result, or `file:line`, and the helper count stayed within budget.
+**Complete when:** every obligation is answered or its gap is stated with where you looked, every sourced claim maps to a retrieved URL, doc ID, command result, or `file:line`, and the helper count stayed within budget.
 
 ## Examples
 
 - `/meta-code How does authentication flow through this repository?`
 - `/meta-code Compare the current deployment constraints of Cloudflare Workers and Vercel Functions.`
+
+## Sources
+
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

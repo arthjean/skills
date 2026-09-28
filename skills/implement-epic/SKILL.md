@@ -14,6 +14,8 @@ Finish the epic so that every acceptance criterion is proven from a real executi
 
 Resolve the PRD path and epic ID. Without an epic ID, take the first epic with `TODO`, `IN_PROGRESS`, or `BLOCKED` stories. Work the incomplete stories in dependency order; skip `DONE`, `IN_REVIEW`, and `CANCELLED` stories unless reimplementation was requested. Read what you need to locate integration points, nothing more.
 
+Carry every incomplete story in one run. Between stories, keep going and put progress notes in the same message as the next action; the only early stops are the `BLOCKED` conditions under Boundaries. The status file is the run's checklist: set each story `IN_PROGRESS` when you start it, so progress survives context compaction and anyone reading the file sees where the run stands.
+
 Before editing, name the **execution roots** the epic must plug into: route table, command registry, rendered component tree, dependency container, migration list, scheduler, event subscriptions, config readers, public package exports. Missing wiring never appears in a diff, so it must be planned up front.
 
 External evidence (docs, web) is worth fetching only when a current or version-sensitive fact can change the implementation or a test. State the question, use one route, record the fact and its source. Evidence may amend the technical plan; it never rewrites outcome, non-goals, or acceptance criteria without the user. If it contradicts the product contract, report the contradiction.
@@ -40,7 +42,7 @@ File count alone never selects the heaviest tier. Local tests, builds, type chec
 
 Set implemented stories to `IN_REVIEW`, roll up epic status and counters, leave `completed_at` unset, validate the tracker with an existing repository check when one exists. Print `STATUS IN_REVIEW` when every non-cancelled story is implemented, wired, and validated, otherwise `STATUS BLOCKED`.
 
-Receipt: epic and tier, scope corrections, stories implemented, criterion to `file:line` and entry point and proof, changed files, validation results, blockers, and the `review-epic` command to run next.
+Receipt, leading with what needs the user (blockers, decisions left open, proof only a human can give), then: epic and tier, scope corrections, stories implemented, criterion to `file:line` and entry point and proof, changed files, validation results, and the `review-epic` command to run next.
 
 ## Boundaries
 
@@ -50,3 +52,7 @@ Stay inside the epic and preserve unrelated worktree changes. Never weaken tests
 
 - `/implement-epic tasks/prd-notifications.md EP-002`
 - `/implement-epic tasks/prd-billing.md EP-003 --profile deep`
+
+## Sources
+
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

@@ -1,6 +1,6 @@
 # meta-debug helper protocols
 
-Load this file only when Phase 2 delegates a named diagnostic gap.
+Load this file only when the Diagnose step delegates a named diagnostic gap.
 
 ## Budgets
 

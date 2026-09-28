@@ -8,7 +8,7 @@ argument-hint: "[prd-path] [EP-NNN] [--profile fast|default|deep] [--base <git-r
 
 Review: $ARGUMENTS
 
-Prove the epic against its outcome, child criteria, integration contracts, and security boundaries. Fix confirmed defects, then certify only the final repository state. This skill alone writes `DONE`, `BLOCKED`, or a downgrade. Explicit user instructions override anything below.
+Prove the epic against its outcome, child criteria, integration contracts, and security boundaries. Fix confirmed defects, then certify only the final repository state. This skill alone writes `DONE`, `BLOCKED`, or a downgrade. Carry the review through to a written verdict in one run: between phases, keep going, and a path you cannot repair becomes a recorded blocker, not a pause. Explicit user instructions override anything below.
 
 ## Scope
 
@@ -48,7 +48,7 @@ Validate once after the last change, in proportion to the changed surface: accep
 
 A story is `DONE` only when every criterion is `PASS` or `MANUAL_PROVEN`, required gates pass, and no blocking finding remains. `IN_REVIEW` covers pending manual proof or actionable correction; `BLOCKED` covers external dependencies, missing irreversible decisions, or repeated technical failure. Downgrade a `DONE` story when current evidence disproves it, preserving a valid `completed_at`. Set `reviewed_at` and `completed_at` per repository convention, recompute counters, and set the epic `DONE` only when every child is `DONE` or `CANCELLED`.
 
-Receipt: epic and tier, per-story and epic verdicts, criterion evidence with entry points, wiring defects, fixed findings, unapplied maintainability findings, commands and results, status changes, manual proof, blockers.
+Receipt, leading with what needs the user (pending manual proof, blockers, decisions left open), then: epic and tier, per-story and epic verdicts, criterion evidence with entry points, wiring defects, fixed findings, unapplied maintainability findings, commands and results, status changes.
 
 ## Boundaries
 
@@ -58,3 +58,7 @@ Preserve the epic boundary and unrelated worktree changes. Never weaken tests, f
 
 - `/review-epic tasks/prd-notifications.md EP-002`
 - `/review-epic tasks/prd-search.md EP-001 --base feature/search-start --quality`
+
+## Sources
+
+Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).
