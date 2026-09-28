@@ -4,13 +4,13 @@ Where lines start, where they end, where they break and which characters they us
 
 ## Measure (line length)
 
-Long lines make it harder for the eye to find the start of the next line. For long-form text, aim for 60–75 characters per line.
+Long lines make it harder for the eye to find the start of the next. For long-form text, aim for 60–75 characters per line.
 
-Any unit works. `65ch` measures characters directly (one `ch` is the width of the `0` in the current font), but a pixel or rem cap is just as good: at a `16px` body size the 60–75 character range lands roughly between `560px` and `680px` depending on the font, so Tailwind's `max-w-xl` (`576px`) or `max-w-2xl` (`672px`) fit. What matters is that a cap exists and the resulting line length sits in range; recheck it if the body font size changes.
+Any unit works. `65ch` measures characters directly, one `ch` being the width of the `0` in the current font, and a pixel or rem cap is just as good. At a `16px` body size the 60–75 character range lands roughly between `560px` and `680px` depending on the font, so Tailwind's `max-w-xl` (`576px`) and `max-w-2xl` (`672px`) both fit. What matters is that a cap exists and the line length sits in range. Recheck it if the body font size changes.
 
 ## Alignment
 
-`text-align` controls where each line starts and ends. `text-align: justify` stretches spaces until both edges line up; it can work in specific editorial layouts but avoid it in most interfaces.
+`text-align` controls where each line starts and ends. `justify` stretches spaces until both edges line up, which works in specific editorial layouts and nowhere else in an interface.
 
 ## Wrapping
 
@@ -21,18 +21,18 @@ Any unit works. `65ch` measures characters directly (one `ch` is the width of th
 | `overflow-wrap: break-word` | Lets long words, links and IDs break before escaping the container |
 | `white-space: nowrap` | Keeps labels and badges on one line where a break looks broken |
 
-Use `balance` on headings and `pretty` on descriptions; combined they give the best outcome. Skip both in long-form text: browsers ignore `balance` past a few lines anyway, and evening out a whole paragraph wastes space and makes it harder to read.
+Use `balance` on headings and `pretty` on descriptions. Skip both in long-form text, because browsers ignore `balance` past a few lines anyway, and evening out a whole paragraph wastes space and makes it harder to read.
 
 ## Truncation
 
 - Single line: `text-overflow: ellipsis`, which needs `overflow: hidden` and `white-space: nowrap`.
 - Multiple lines: `line-clamp` allows any number of lines before the ellipsis.
 
-Truncation hides content. If the missing text matters, make the full value available elsewhere (tooltip or expanded view).
+Truncation hides content. Where the missing text matters, make the full value available in a tooltip or an expanded view.
 
 ## Case
 
-`text-transform` changes how case appears without changing the underlying text. Write copy naturally and control presentation with CSS, so changing presentation never requires rewriting copy.
+`text-transform` changes how case appears without changing the underlying text. Write copy naturally and control presentation with CSS, so a redesign never means rewriting copy.
 
 ## Smart punctuation
 
@@ -49,22 +49,7 @@ Keyboard characters are not always the best characters:
 
 ## Internationalization
 
-- Set the `lang` attribute so browsers choose the right quotes, hyphenation and pronunciation.
-- Use `dir="rtl"` for right-to-left content.
-- To support both directions, use logical properties everywhere a directional one exists:
+Two refinements for mixed-direction text:
 
-```css
-/* Good */
-p {
-  margin-inline-start: 8px;
-  text-align: start;
-}
-
-/* Bad: breaks in RTL */
-p {
-  margin-left: 8px;
-  text-align: left;
-}
-```
-
-The same applies to `padding` and every other directional property.
+- **Long paragraphs align by their own language.** A one- or two-line snippet follows the surrounding UI's direction. A paragraph of three or more lines aligns to its own script instead, so an English paragraph stays start-aligned LTR even inside an RTL interface. `text-align: start` with the correct `lang`/`dir` on the paragraph element handles this.
+- **Never reverse digits.** Numbers keep their order in every direction, so a phone number or "541" reads identically in RTL. Browsers handle this through the Unicode bidi algorithm. Never fight it with manual reordering, and wrap mixed number and text values in `<bdi>` where adjacent RTL text disturbs them.

@@ -1,91 +1,105 @@
 ---
 name: better-colors
-description: OKLCH color space for web projects. Convert hex/rgb/hsl to oklch, generate palettes, check contrast, handle gamut boundaries, and theme with Tailwind v4. Triggers on oklch, color conversion, palette generation, contrast ratio, gamut, display p3, design tokens, hue drift, chroma, dark mode colors.
+description: Helps you build a color system and answer anything about color in your project. You can generate palettes, use semantic tokens, convert between formats, check contrast and more.
 ---
 
-# OKLCH Colors
+# Colors
 
-OKLCH is a perceptually uniform color space where the numbers actually mean what you think they mean. Most color problems in CSS (broken palettes, failing contrast, hue drift) come from using color spaces that don't match how we see. OKLCH fixes the model so the tools work. To explore interactively, visit [oklch.fyi](https://oklch.fyi).
+A color system is a small set of ramps, named by role and verified against the backgrounds they actually render on. Most color bugs are system bugs. A value picked in isolation, a token borrowed because it looked right, a pair nobody measured.
 
-## Quick Reference
+Never report a contrast value you did not measure, and never estimate a color you could compute. Colors are one of the few interface concerns with an exact answer, so produce the exact answer.
 
-| Category | When to use | Reference |
-| --- | --- | --- |
-| Conversion | Hex/rgb/hsl to oklch | [color-conversion.md](color-conversion.md) |
-| Palettes | Generate scales, multi-hue, dark mode | [palette-generation.md](palette-generation.md) |
-| Contrast | APCA/WCAG checks, fixing failing contrast | [accessibility-contrast.md](accessibility-contrast.md) |
-| Gamut & Tailwind | P3 fallbacks, `@theme` scales, gamut clamping | [gamut-and-tailwind.md](gamut-and-tailwind.md) |
+Contrast requirements belong to `better-accessibility`. Surfaces, shadows and icon color belong to `better-ui`.
 
-## Why OKLCH
+## Match the project's color system
 
-- **Perceptual uniformity.** Equal L steps = equal brightness. `oklch(0.5 ...)` is visually mid. HSL's `lightness: 50%` varies wildly by hue.
-- **Stable hue.** HSL blue shifts toward purple as lightness changes. OKLCH hue stays constant across the full lightness range.
-- **Independent chroma.** Chroma is an absolute measure of colorfulness that doesn't depend on lightness. HSL saturation does.
-- **Finite gamut.** Not every oklch value maps to a displayable sRGB color. High-chroma values at certain hues will clip; gamut awareness is required.
+Reuse the project's tokens and notation. A second representation added to fix one value makes the palette harder to reason about. A consistent hex system beats hex with `oklch()` scattered through it.
 
-## OKLCH Syntax
+For a new system, `oklch()` is the best default, because its numbers behave the way the ramp rules below describe. Everywhere else, a color library produces the same ramp in the project's own notation ([color-formats.md](color-formats.md)).
 
-```
-oklch(L C H)
-oklch(L C H / alpha)
-```
+## A system is ramps, not colors
 
-| Channel | Range | Description |
-| --- | --- | --- |
-| L (Lightness) | 0–1 | 0 = black, 1 = white. Perceptually uniform. |
-| C (Chroma) | 0–~0.4 | Colorfulness. 0 = gray. Max depends on L and H. |
-| H (Hue) | 0–360 | Hue angle in degrees. |
-| alpha | 0–1 | Optional transparency. Slash syntax. |
+One neutral ramp, one accent ramp and only the status ramps the product actually renders. A `warning` ramp nothing imports is maintenance for zero pixels. A second accent hue earns its place only when two things must be distinguishable at a glance.
 
-```css
-oklch(0.637 0.237 25.331)
-oklch(0.8 0.05 200 / 0.5)
-```
+## Every step has a job
 
-**Formatting:** L and C use 3 decimal places, H uses up to 3. Drop trailing zeros. Format `-0` as `0`. Browser support: Baseline 2023, 96%+ global coverage.
+A ramp is not a gradient to pick from by eye. Each step exists because a role needs it: page background, component hover, border, solid fill, body text. Do not generate a step no role consumes. Both the Tailwind `50`–`950` and Radix `1`–`12` conventions map to those roles ([palette-structure.md](palette-structure.md)).
 
-## Key Thresholds
+## Name primitives by hue, semantics by role
 
-| Rule | Value |
+Primitives name a value (`--blue-500`) and are never applied in a component. Semantic tokens name a job (`--color-text-secondary`), point at a primitive and are the only tier components reference.
+
+That seam is what makes theming possible. Without it, dark mode means auditing every usage to work out which meant "the accent" and which just wanted blue ([token-naming.md](token-naming.md)).
+
+## Use a token only in its role
+
+Never borrow a token because its value is right today. A separator used as a text color works until borders get lighter, and then the text goes with them. If a role has no token, add the token.
+
+## Hold the hue across the ramp
+
+Four properties define a well-formed ramp:
+
+- Steps step evenly in *perceived* lightness, not in whatever the format calls lightness.
+- Hue stays constant end to end.
+- Vividness peaks mid-ramp and falls off at both ends.
+- Steps sit denser at the light end than at the dark end.
+
+Both ends stop short of pure black and white, which cannot carry hue at all. Use a color library rather than eyeballing it ([palette-generation.md](palette-generation.md)).
+
+## One color, one meaning
+
+Use a color for one purpose across the whole interface, treating anything within `15°` of hue as the same color. If the accent means interactive, that hue on static text tells users to click something that is not clickable, and an interactive element rendered neutral misleads just as badly. Color is never the only carrier of meaning, which `better-accessibility` owns.
+
+## Fill exactly one action per view
+
+When filled color encodes primary emphasis, one primary action gets it and peers stay neutral. Put the color on the background, not the label. A filled button reads as primary across the room; accent-colored text on a neutral button reads as a link.
+
+Several colored backgrounds are fine when they encode distinct states or categories rather than competing as peers.
+
+## Measure the rendered pair, then report
+
+Measure a foreground against the background it actually renders on, not the page background. When a pair fails, report the pair, its measured value and the threshold it misses, then leave the colors alone. They are a design decision. Change them only when asked, and remeasure after ([contrast.md](contrast.md)).
+
+## Pick a gradient's interpolation space
+
+The space is a look, not a correctness setting.
+
+- **`in oklab`** is the best default: even brightness, no hue surprises.
+- **`in oklch`** travels around the hue wheel rather than through the middle, staying vivid and sweeping every hue between the stops. Reach for it when a two-hue gradient goes gray in the middle.
+- **The sRGB default** darkens and mutes the midpoint. It is what most interfaces already have, because it is what you get without asking.
+
+See [color-usage.md](color-usage.md).
+
+## Before you finish
+
+| Mistake | Fix |
 | --- | --- |
-| Light/dark boundary | L > 0.6 = light background → use dark text |
-| Lightness gap (light bg) | Foreground L < 0.35 when background L > 0.9 |
-| Lightness gap (dark bg) | Foreground L > 0.9 when background L < 0.25 |
-| Hue drift threshold | > 10° spread across palette steps = visible drift |
-| APCA body text | \|Lc\| >= 75 minimum, >= 90 preferred |
-| APCA non-body text | \|Lc\| >= 60 minimum |
-| WCAG 2 normal text | 4.5:1 AA, 7:1 AAA |
-| Contrast fix | Adjust L only; chroma has negligible effect |
+| A raw value where the project has a token | Reuse or add the role token, in the project's notation |
+| An isolated `oklch()` value dropped into a hex codebase | Keep the established notation unless a migration is in scope |
+| A primitive like `--blue-500` used directly in a component | Point a semantic token at it |
+| Token named for its appearance (`--color-blue-button`) or first use (`--color-sidebar-gray`) | Name it for its role: `--color-accent-solid`, `--color-bg-surface` |
+| `--color-primary` meaning the brand and `--color-text-primary` meaning body text | Reserve `accent` for the brand; let `primary` mean "most prominent of its group" |
+| Semantic token used outside its role (separator as text) | Add a token for the missing role; never borrow by value |
+| Ramp built by varying HSL lightness | Rebuild against perceived lightness with a constant hue |
+| Ramp spaced evenly across the full range | Tighten the light end until `50` and `100` read as two surfaces |
+| Same saturation number reused across hues | Match the proportion of each hue's own maximum, not the raw value |
+| Status hue that collides with the accent hue | Move it until destructive and primary read apart side by side |
+| Dark mode made by mechanically reversing the light palette | Reverse as a starting point, then reduce vividness, widen the dark end and recheck every pair |
+| `prefers-color-scheme` setting some tokens and a `.dark` class setting others | Pick one switching mechanism and use it throughout |
+| Contrast fixed by changing hue | Change lightness, the channel contrast responds to |
+| P3 color with no sRGB fallback | Declare the sRGB value first, then override inside `@media (color-gamut: p3)` |
 
-## Review Output Format
+## Reporting
 
-Always present color changes as a markdown table with **Before** and **After** columns. Include **every color that was changed**, not just a subset. Never list findings as separate "Before:" / "After:" lines outside of a table.
+**Severity.** `HIGH` makes content unreadable or assigns a misleading semantic color. `MEDIUM` is a noticeable theme, token, or gamut failure. `LOW` is isolated polish.
 
-| Before | After |
-| --- | --- |
-| `color: #3b82f6` | `color: oklch(0.623 0.188 259.815)` |
-| Same absolute C across hues | Same C% of each hue's max chroma |
-| No sRGB fallback for P3 color | `@media (color-gamut: p3)` wrapper |
+**Verification.** Without a browser: token values, the gamut of every declared color, both theme blocks present and contrast computed from the declared token pair. With one: the background actually rendered behind the text, including opacity and any image beneath it, measured in both light and dark. A failing pair is reported, not repainted. Report every check you could not run as `Not verified`.
 
-This keeps feedback scannable and diff-friendly. Each row is a self-contained change the developer can act on independently.
+**Format.** Group findings under the principle each violates, ordered by severity, one row per root cause listing every location it appears in:
 
-## Common Mistakes
+| Severity | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
 
-| Issue | Fix |
-| --- | --- |
-| Hex/rgb/hsl color in new code | Convert to `oklch()` |
-| HSL palette ramp with hue drift | Rebuild with constant oklch hue |
-| Failing contrast (check foreground vs its background using APCA) | Adjust oklch L channel, keep C and H |
-| High chroma without gamut check | Clamp to max chroma for the L/H in sRGB |
-| Same absolute C across different hues | Use same C% (percentage of max) for consistent vividness |
-| P3 color without sRGB fallback | Add `@media (color-gamut: p3)` pattern |
-| Dark mode with hand-picked colors | Derive from light palette by reversing L mapping |
-| Hex in Tailwind v4 `@theme` | Convert to oklch values |
-| Alpha with comma syntax | Use slash: `oklch(L C H / alpha)` |
+`Location` is `path/to/file:line`. `Why` names the principle and the user impact.
 
-## Reference Files
-
-- [color-conversion.md](color-conversion.md): Supported formats, conversion examples, bulk conversion rules, what to leave alone
-- [palette-generation.md](palette-generation.md): Scale convention, generation algorithm, multi-hue palettes, dark mode, why not HSL
-- [accessibility-contrast.md](accessibility-contrast.md): APCA and WCAG 2 thresholds, fixing contrast with L, lightness gap guide, hue drift detection
-- [gamut-and-tailwind.md](gamut-and-tailwind.md): sRGB vs P3, gamut clamping, CSS fallback patterns, Tailwind v4 @theme and migration
+End with `Block` when any `HIGH` remains, `Approve` otherwise, leaving the rest in the table as work to do. Never `Approve` coverage you did not inspect. With nothing to report, state "No actionable color findings" and report verification.
