@@ -261,7 +261,7 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
     let collision_home = tempfile::tempdir()?;
     let collision_roots = roots(&collision_home, &[ProviderId::Codex])?;
     let catalog = Catalog::load()?;
-    let collision = collision_roots.canonical_skills.join("baseline-ui");
+    let collision = collision_roots.canonical_skills.join("find-skills");
     fs::create_dir_all(&collision)?;
     set_directory_mode(&collision, 0o755)?;
     let blocked = decide(
@@ -288,7 +288,7 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
     }));
     assert!(blocked.receipt.owned_asset(&collision).is_none());
 
-    write_legacy_lock(&collision_roots, &["baseline-ui"])?;
+    write_legacy_lock(&collision_roots, &["find-skills"])?;
     let legacy = legacy_import_plan(&catalog, &collision_roots)?
         .ok_or("the legacy lock proves no catalog skill")?;
     let proven = decide(
@@ -310,7 +310,7 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
     assert_eq!(adoptable.ownership_basis(), OwnershipBasis::VerifiedLegacy);
     assert_eq!(
         adoptable.ownership.source_id().map(String::as_str),
-        Some("baseline-ui")
+        Some("find-skills")
     );
     assert!(
         proven
@@ -323,7 +323,7 @@ fn homonyms_require_adoption_and_owned_drift_blocks_reconciliation() -> TestResu
     let home = tempfile::tempdir()?;
     let roots = roots(&home, &ProviderId::ALL)?;
     let installed = install_both(&catalog, &roots, "drift-install")?;
-    let managed_file = roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let managed_file = roots.canonical_skills.join("find-skills/SKILL.md");
     fs::write(&managed_file, b"local edit")?;
     let drifted = decide(
         &catalog,
@@ -386,7 +386,7 @@ fn import_and_reconciliation_repair_catalog_assets_without_claiming_personal_ass
     // unrelated personal skill, and no Arthur agent or support file.
     let import_home = tempfile::tempdir()?;
     let import_roots = roots(&import_home, &ProviderId::ALL)?;
-    let drifted_skill = import_roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let drifted_skill = import_roots.canonical_skills.join("find-skills/SKILL.md");
     let missing_agent = import_home
         .path()
         .join(".codex/agents/docs-researcher.toml");
@@ -396,7 +396,7 @@ fn import_and_reconciliation_repair_catalog_assets_without_claiming_personal_ass
     }
     fs::write(&drifted_skill, b"old Arthur content")?;
     fs::write(&personal, b"personal")?;
-    write_legacy_lock(&import_roots, &["baseline-ui"])?;
+    write_legacy_lock(&import_roots, &["find-skills"])?;
     let legacy = legacy_import_plan(&catalog, &import_roots)?
         .ok_or("the legacy lock proves no catalog skill")?;
 
@@ -434,10 +434,10 @@ fn import_and_reconciliation_repair_catalog_assets_without_claiming_personal_ass
         entry.ownership_basis() != OwnershipBasis::VerifiedLegacy
             || entry
                 .destination
-                .starts_with(import_roots.canonical_skills.join("baseline-ui"))
+                .starts_with(import_roots.canonical_skills.join("find-skills"))
             || entry
                 .destination
-                .starts_with(import_home.path().join(".claude/skills/baseline-ui"))
+                .starts_with(import_home.path().join(".claude/skills/find-skills"))
     }));
     assert!(imported.receipt.owned_asset(&personal).is_none());
 
@@ -559,7 +559,7 @@ fn provider_uninstall_preserves_references_and_full_uninstall_releases_drift() -
         ProviderId::Claude
     ));
     assert!(provider_managed(&claude_removed.receipt, ProviderId::Codex));
-    assert!(roots.canonical_skills.join("baseline-ui/SKILL.md").exists());
+    assert!(roots.canonical_skills.join("find-skills/SKILL.md").exists());
     assert!(
         home.path()
             .join(".codex/agents/agent-explorer.toml")
@@ -609,7 +609,7 @@ fn provider_uninstall_preserves_references_and_full_uninstall_releases_drift() -
     apply(&roots, &uninstall_all, "remove-all")?;
     assert_eq!(fs::read(&drifted_agent)?, b"local edit");
     assert_eq!(fs::read(&personal_agent)?, b"personal");
-    assert!(!roots.canonical_skills.join("baseline-ui").exists());
+    assert!(!roots.canonical_skills.join("find-skills").exists());
     let committed = Receipt::decode(&fs::read(&roots.receipt_path)?)?;
     assert!(committed.assets.is_empty());
     assert!(

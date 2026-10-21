@@ -204,7 +204,7 @@ fn status_and_doctor_prove_owned_state_and_detect_drift() -> TestResult {
             })
     );
 
-    let managed = home.path().join(".agents/skills/baseline-ui/SKILL.md");
+    let managed = home.path().join(".agents/skills/find-skills/SKILL.md");
     let original = fs::read(&managed)?;
     fs::write(&managed, b"local drift")?;
     let status = run(home.path(), &path, &["--json", "status"])?;
@@ -307,7 +307,7 @@ fn provider_minimum_root_identity_and_downgrade_fail_closed() -> TestResult {
 
     let alternate_codex = home.path().join("alternate-codex");
     fs::create_dir(&alternate_codex)?;
-    let managed_before = fs::read(home.path().join(".agents/skills/baseline-ui/SKILL.md"))?;
+    let managed_before = fs::read(home.path().join(".agents/skills/find-skills/SKILL.md"))?;
     for arguments in [
         &["--json", "status"][..],
         &["--json", "doctor"][..],
@@ -330,7 +330,7 @@ fn provider_minimum_root_identity_and_downgrade_fail_closed() -> TestResult {
         );
     }
     assert_eq!(
-        fs::read(home.path().join(".agents/skills/baseline-ui/SKILL.md"))?,
+        fs::read(home.path().join(".agents/skills/find-skills/SKILL.md"))?,
         managed_before,
     );
 
@@ -338,7 +338,7 @@ fn provider_minimum_root_identity_and_downgrade_fail_closed() -> TestResult {
     let mut receipt = serde_json::from_slice::<Value>(&fs::read(&receipt_path)?)?;
     receipt["cli_version"] = Value::String("9.0.0".to_owned());
     fs::write(&receipt_path, serde_json::to_vec_pretty(&receipt)?)?;
-    let before = fs::read(home.path().join(".agents/skills/baseline-ui/SKILL.md"))?;
+    let before = fs::read(home.path().join(".agents/skills/find-skills/SKILL.md"))?;
     let update = run(home.path(), &path, &["--json", "update", "--yes"])?;
     assert_eq!(update.status.code(), Some(3));
     assert_eq!(
@@ -346,7 +346,7 @@ fn provider_minimum_root_identity_and_downgrade_fail_closed() -> TestResult {
         "downgrade_refused"
     );
     assert_eq!(
-        fs::read(home.path().join(".agents/skills/baseline-ui/SKILL.md"))?,
+        fs::read(home.path().join(".agents/skills/find-skills/SKILL.md"))?,
         before
     );
 

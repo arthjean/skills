@@ -284,11 +284,11 @@ fn an_adopt_decision_only_selects_verified_candidates() -> TestResult {
     let catalog = Catalog::load()?;
 
     // One skill the lock proves, one identical skill it does not.
-    let proven = roots.canonical_skills.join("baseline-ui");
-    let unproven = roots.canonical_skills.join("coss");
+    let proven = roots.canonical_skills.join("find-skills");
+    let unproven = roots.canonical_skills.join("better-auth-best-practices");
     fs::create_dir_all(&proven)?;
     fs::create_dir_all(&unproven)?;
-    write_legacy_lock(&roots, &["baseline-ui"])?;
+    write_legacy_lock(&roots, &["find-skills"])?;
     let legacy = legacy_plan(&catalog, &roots)?.ok_or("the lock proves no catalog skill")?;
 
     let adopt = decide(
@@ -363,10 +363,10 @@ fn a_non_conforming_legacy_entry_reports_its_source_and_destination() -> TestRes
     let roots = roots(&home, &[ProviderId::Codex])?;
     let catalog = Catalog::load()?;
 
-    let divergent = roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let divergent = roots.canonical_skills.join("find-skills/SKILL.md");
     fs::create_dir_all(divergent.parent().ok_or("skill has no parent")?)?;
     fs::write(&divergent, b"not the bundled catalog")?;
-    write_legacy_lock(&roots, &["baseline-ui"])?;
+    write_legacy_lock(&roots, &["find-skills"])?;
     let legacy = legacy_plan(&catalog, &roots)?.ok_or("the lock proves no catalog skill")?;
 
     let decision = decide(
@@ -387,7 +387,7 @@ fn a_non_conforming_legacy_entry_reports_its_source_and_destination() -> TestRes
                 && diagnostic.path_utf8.as_deref() == divergent.to_str()
         })
         .ok_or("the divergent legacy path has no diagnostic")?;
-    assert_eq!(diagnostic.source_id.as_deref(), Some("baseline-ui"));
+    assert_eq!(diagnostic.source_id.as_deref(), Some("find-skills"));
     assert!(
         decision
             .plan
@@ -408,7 +408,7 @@ fn every_surface_projects_the_same_decision_without_reading_the_filesystem() -> 
     let catalog = Catalog::load()?;
     let receipt = install(&catalog, &roots, "projection-install")?;
 
-    let managed = roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let managed = roots.canonical_skills.join("find-skills/SKILL.md");
     fs::write(&managed, b"local edit")?;
     let decision = decide(
         &catalog,
@@ -424,7 +424,7 @@ fn every_surface_projects_the_same_decision_without_reading_the_filesystem() -> 
     // no renderer and no executor reclassifies an asset.
     fs::remove_file(&managed)?;
     fs::write(&managed, b"another edit")?;
-    fs::remove_dir_all(roots.canonical_skills.join("coss"))?;
+    fs::remove_dir_all(roots.canonical_skills.join("better-auth-best-practices"))?;
     assert_eq!(before, projections(&decision, &roots)?);
 
     // The blocked review disables apply and never recommends adopt without a
@@ -449,7 +449,7 @@ fn a_stale_receipt_converges_through_a_visible_receipt_only_operation() -> TestR
     // The disk already equals the catalog; only the receipt is stale.
     let mut stale = committed.clone();
     stale.catalog_sha256 = "b".repeat(64);
-    let target = roots.canonical_skills.join("baseline-ui/SKILL.md");
+    let target = roots.canonical_skills.join("find-skills/SKILL.md");
     let record = stale
         .assets
         .iter_mut()
@@ -496,7 +496,7 @@ fn a_stale_receipt_converges_through_a_visible_receipt_only_operation() -> TestR
     else {
         return Err("a receipt-proven entry must carry its receipt claim".into());
     };
-    assert_eq!(source_id, "skills/baseline-ui/SKILL.md");
+    assert_eq!(source_id, "skills/find-skills/SKILL.md");
     assert_eq!(
         expected.sha256,
         Some(hash_bytes(b"a previous catalog version")),
@@ -706,7 +706,7 @@ fn a_residual_lock_cleanup_plans_its_own_receipt_commit() -> TestResult {
     // Every path the lock names is already proven by the receipt, so only the
     // legacy lock has to be archived and rewritten. The receipt commit that
     // closes that transaction is still planned, never implicit.
-    write_legacy_lock(&roots, &["baseline-ui"])?;
+    write_legacy_lock(&roots, &["find-skills"])?;
     let legacy = legacy_plan(&catalog, &roots)?.ok_or("the lock proves no catalog skill")?;
     let decision = decide(
         &catalog,

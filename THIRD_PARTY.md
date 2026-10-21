@@ -4,22 +4,15 @@ This repository bundles skills from several upstream projects. Those files retai
 
 | Upstream project | Included skills |
 | --- | --- |
-| [better-auth/skills](https://github.com/better-auth/skills) | `better-auth-best-practices`, `better-auth-security-best-practices`, `create-auth`, `email-and-password-best-practices`, `organization-best-practices`, `two-factor-authentication-best-practices` |
+| [better-auth/skills](https://github.com/better-auth/skills) | `better-auth-best-practices`, `better-auth-security-best-practices` |
 | [cursor/plugins](https://github.com/cursor/plugins) | `thermo-nuclear-code-quality-review` |
-| [cosscom/coss](https://github.com/cosscom/coss) | `coss`, `coss-particles` |
-| [ibelick/ui-skills](https://github.com/ibelick/ui-skills) | `baseline-ui`, `ui-skills-root` |
 | [jakubkrehel/skills](https://github.com/jakubkrehel/skills) | `better-colors`, `better-typography`, `better-ui` |
 | [jakubkrehel/make-interfaces-feel-better](https://github.com/jakubkrehel/make-interfaces-feel-better) | `make-interfaces-feel-better` |
 | [jakubkrehel/oklch-skill](https://github.com/jakubkrehel/oklch-skill) | `oklch-skill` |
-| [mattpocock/skills](https://github.com/mattpocock/skills) | `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-me`, `grill-with-docs`, `grilling`, `handoff`, `implement`, `improve-codebase-architecture`, `research`, `wayfinder`, `writing-great-skills` |
-| [nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) | `ui-ux-pro-max` |
+| [mattpocock/skills](https://github.com/mattpocock/skills) | `code-review`, `codebase-design`, `diagnosing-bugs`, `implement`, `improve-codebase-architecture`, `research`, `writing-great-skills` |
 | [remotion-dev/skills](https://github.com/remotion-dev/skills) | `remotion-best-practices` |
 | [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) | `agent-browser` ([Apache-2.0](LICENSE-APACHE-2.0)) |
 | [vercel-labs/skills](https://github.com/vercel-labs/skills) | `find-skills` |
-
-The vendored `ui-ux-pro-max` snapshot is byte-identical to Arthur's installed copy. Its `SKILL.md` differs from the pinned upstream tree only by a final POSIX newline; the lock file records the distributed bytes.
-
-The detector scripts under `skills/impeccable/scripts/detector/` carry embedded `Apache-2.0` SPDX notices and a 2026 copyright notice for Paul Bakaus.
 
 ## Rust dependencies added for the installer transaction engine
 

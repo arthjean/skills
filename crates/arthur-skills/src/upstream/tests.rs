@@ -991,7 +991,7 @@ fn repository_configuration_covers_declared_upstream_skills()
         .and_then(Path::parent)
         .ok_or("crate is not nested under repository")?;
     let configuration = load_configuration(root)?;
-    assert_eq!(configuration.manifest.source.len(), 12);
+    assert_eq!(configuration.manifest.source.len(), 9);
     assert_eq!(
         configuration
             .manifest
@@ -999,7 +999,7 @@ fn repository_configuration_covers_declared_upstream_skills()
             .iter()
             .map(|source| source.skill.len())
             .sum::<usize>(),
-        33
+        18
     );
     Ok(())
 }

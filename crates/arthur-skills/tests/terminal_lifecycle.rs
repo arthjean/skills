@@ -267,7 +267,7 @@ fn real_cli_imports_updates_and_reports_an_aligned_configuration() -> Result<(),
     // A Vercel Skills v3 installation: only the skills its lock names exist,
     // with no Arthur receipt, agent or support file.
     let home = tempfile::tempdir()?;
-    let drifted_skill = home.path().join(".agents/skills/baseline-ui/SKILL.md");
+    let drifted_skill = home.path().join(".agents/skills/find-skills/SKILL.md");
     let obsolete = home
         .path()
         .join(".agents/skills/obsolete-arthur-skill/SKILL.md");
@@ -283,7 +283,7 @@ fn real_cli_imports_updates_and_reports_an_aligned_configuration() -> Result<(),
         serde_json::to_vec_pretty(&serde_json::json!({
             "version": 3,
             "skills": {
-                "baseline-ui": {
+                "find-skills": {
                     "source": "arthjean/skills",
                     "sourceType": "github",
                     "skillFolderHash": "89abcdef0123456789abcdef0123456789abcdef",

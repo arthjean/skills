@@ -21,7 +21,7 @@ use tempfile::TempDir;
 
 type TestResult = Result<(), Box<dyn Error>>;
 
-const PROVEN_SKILL: &str = "baseline-ui";
+const PROVEN_SKILL: &str = "find-skills";
 
 fn roots(home: &TempDir) -> Result<ResolvedRoots, Box<dyn Error>> {
     Ok(resolve_roots_from(

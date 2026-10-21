@@ -722,7 +722,12 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
         .ok_or("receipt assets are not an array")?
         .retain(|asset| {
             let source = asset["source_id"].as_str().unwrap_or_default();
-            !["coss", "coss-particles"].iter().any(|name| {
+            ![
+                "better-auth-best-practices",
+                "better-auth-security-best-practices",
+            ]
+            .iter()
+            .any(|name| {
                 source == format!("activation:claude:{name}")
                     || source == format!("directory:skills/{name}")
                     || source.starts_with(&format!("directory:skills/{name}/"))
@@ -733,13 +738,15 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
 
     fs::remove_dir_all(home.path().join(".agents/skills"))?;
     fs::create_dir(home.path().join(".agents/skills"))?;
-    let legacy_coss_file = home.path().join(".agents/skills/coss/SKILL.md");
+    let legacy_unproven_file = home
+        .path()
+        .join(".agents/skills/better-auth-best-practices/SKILL.md");
     fs::create_dir_all(
-        legacy_coss_file
+        legacy_unproven_file
             .parent()
-            .ok_or("legacy coss file has no parent")?,
+            .ok_or("legacy better-auth-best-practices file has no parent")?,
     )?;
-    fs::write(&legacy_coss_file, b"legacy catalog bytes")?;
+    fs::write(&legacy_unproven_file, b"legacy catalog bytes")?;
     let prior_archive = home
         .path()
         .join(".agents/.arthur-workflow/vercel-skills-v3-lock.json");
@@ -748,15 +755,15 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
     let legacy_lock = serde_json::to_vec_pretty(&serde_json::json!({
         "version": 3,
         "skills": {
-            "coss": {
-                "source": "cosscom/coss",
+            "better-auth-best-practices": {
+                "source": "better-auth/skills",
                 "sourceType": "github",
                 "skillFolderHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "installedAt": "2026-01-01T00:00:00.000Z",
                 "updatedAt": "2026-01-01T00:00:00.000Z"
             },
-            "coss-particles": {
-                "source": "cosscom/coss",
+            "better-auth-security-best-practices": {
+                "source": "better-auth/skills",
                 "sourceType": "github",
                 "skillFolderHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                 "installedAt": "2026-01-01T00:00:00.000Z",
@@ -800,10 +807,10 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
         .iter()
         .find(|diagnostic| diagnostic["code"] == "legacy_entry_does_not_match_catalog")
         .ok_or("the divergent legacy path has no diagnostic")?;
-    assert_eq!(unproven["source_id"], "coss");
+    assert_eq!(unproven["source_id"], "better-auth-best-practices");
     assert_eq!(
         unproven["path_utf8"].as_str(),
-        legacy_coss_file.to_str(),
+        legacy_unproven_file.to_str(),
         "{unproven}"
     );
     assert!(
@@ -812,7 +819,7 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
             .is_some_and(|remediation| remediation.contains("Move or remove")),
         "{unproven}"
     );
-    assert_eq!(fs::read(&legacy_coss_file)?, b"legacy catalog bytes");
+    assert_eq!(fs::read(&legacy_unproven_file)?, b"legacy catalog bytes");
     assert!(
         !home
             .path()
@@ -825,7 +832,7 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
         run_with_xdg_state(home.path(), &xdg_state_home, &["--json", "update", "--yes"])?;
     assert_eq!(blocked_apply.status.code(), Some(3));
     assert_eq!(json_output(&blocked_apply)?["status"], "blocked");
-    assert_eq!(fs::read(&legacy_coss_file)?, b"legacy catalog bytes");
+    assert_eq!(fs::read(&legacy_unproven_file)?, b"legacy catalog bytes");
     assert!(
         !home
             .path()
@@ -834,9 +841,18 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
     );
 
     // The documented remediation: move or remove every unproven path, then retry.
-    fs::remove_dir_all(home.path().join(".agents/skills/coss"))?;
-    fs::remove_file(home.path().join(".claude/skills/coss"))?;
-    fs::remove_file(home.path().join(".claude/skills/coss-particles"))?;
+    fs::remove_dir_all(
+        home.path()
+            .join(".agents/skills/better-auth-best-practices"),
+    )?;
+    fs::remove_file(
+        home.path()
+            .join(".claude/skills/better-auth-best-practices"),
+    )?;
+    fs::remove_file(
+        home.path()
+            .join(".claude/skills/better-auth-security-best-practices"),
+    )?;
 
     let update = run_with_xdg_state(home.path(), &xdg_state_home, &["--json", "update", "--yes"])?;
     assert!(
@@ -844,8 +860,12 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
         "{}",
         String::from_utf8_lossy(&update.stdout)
     );
-    assert!(home.path().join(".agents/skills/coss/SKILL.md").is_file());
-    assert_ne!(fs::read(&legacy_coss_file)?, b"legacy catalog bytes");
+    assert!(
+        home.path()
+            .join(".agents/skills/better-auth-best-practices/SKILL.md")
+            .is_file()
+    );
+    assert_ne!(fs::read(&legacy_unproven_file)?, b"legacy catalog bytes");
     // A second run converges to a no-op without touching the receipt again.
     let second = run_with_xdg_state(home.path(), &xdg_state_home, &["--json", "update", "--yes"])?;
     assert!(
@@ -856,16 +876,22 @@ fn update_blocks_unproven_legacy_paths_then_recovers_from_the_xdg_lock() -> Test
     assert_eq!(json_output(&second)?["status"], "noop");
     assert!(
         home.path()
-            .join(".agents/skills/coss-particles/SKILL.md")
+            .join(".agents/skills/better-auth-security-best-practices/SKILL.md")
             .is_file()
     );
     assert_eq!(
-        fs::read_link(home.path().join(".claude/skills/coss"))?,
-        Path::new("../../.agents/skills/coss")
+        fs::read_link(
+            home.path()
+                .join(".claude/skills/better-auth-best-practices")
+        )?,
+        Path::new("../../.agents/skills/better-auth-best-practices")
     );
     assert_eq!(
-        fs::read_link(home.path().join(".claude/skills/coss-particles"))?,
-        Path::new("../../.agents/skills/coss-particles")
+        fs::read_link(
+            home.path()
+                .join(".claude/skills/better-auth-security-best-practices")
+        )?,
+        Path::new("../../.agents/skills/better-auth-security-best-practices")
     );
     assert_eq!(
         fs::read(
@@ -978,7 +1004,7 @@ fn plan_and_both_dry_runs_project_one_decision() -> TestResult {
         .position(|asset| {
             asset["source_id"]
                 .as_str()
-                .is_some_and(|source| source == "skills/baseline-ui/SKILL.md")
+                .is_some_and(|source| source == "skills/find-skills/SKILL.md")
         })
         .ok_or("the managed skill file is absent from the receipt")?;
     let unproven = receipt["assets"]
