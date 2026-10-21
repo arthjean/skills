@@ -8,7 +8,7 @@ fn generated_catalog_is_complete_and_verified() {
         Ok(catalog) => catalog,
         Err(error) => panic!("catalog failed validation: {error}"),
     };
-    assert_eq!(catalog.skill_count(), 45);
+    assert_eq!(catalog.skill_count(), 44);
     assert_eq!(
         catalog
             .manifest()
