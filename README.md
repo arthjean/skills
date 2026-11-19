@@ -26,10 +26,10 @@ bunx skills add jakubkrehel/skills
 
 ### [mattpocock/skills](https://github.com/mattpocock/skills)
 
-Small, composable engineering skills by Matt Pocock that keep the developer in control: stress-testing a plan, modeling the domain, designing and reviewing code, researching, and running retros. Arthur uses a subset of this collection, so the command installs only those skills.
+Small, composable engineering skills by Matt Pocock that keep the developer in control: stress-testing a plan, modeling the domain, designing and reviewing code, diagnosing bugs, researching, and running retros. Arthur uses a subset of this collection, so the command installs only those skills.
 
 ```bash
-bunx skills@latest add mattpocock/skills --skill grilling grill-with-docs domain-modeling codebase-design improve-codebase-architecture code-review research writing-for-agents retro wizard
+bunx skills@latest add mattpocock/skills --skill grilling grill-with-docs domain-modeling codebase-design improve-codebase-architecture code-review diagnosing-bugs research writing-for-agents retro wizard
 ```
 
 ### [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)
