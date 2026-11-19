@@ -55,7 +55,7 @@ Every option traces to a research finding or a codebase fact.
 - **Edge cases**: a dedicated story for complex ones, criteria on existing stories for simple ones.
 - **Dependencies**: which stories block others, which run in parallel, and cross-epic links.
 - **Sizes**: XS 1 (config change, single file), S 2 (CRUD endpoint, simple component), M 3 (business logic across files), L 5 (multiple integrations), XL 8 (split further).
-- **Validation spikes**: each high-risk assumption becomes "US-NNN: Validate assumption: {X}" with validation criteria.
+- **Validation spikes**: each high-risk assumption becomes "US-NNN: Validate assumption: {X}" with validation criteria. A spike that depends on stories of another epic, or that only a human can prove, goes in an epic of its own placed after the epics it checks, so that it never holds an implementation epic open.
 - **Size cap**: more than 20 stories splits into phased releases or several PRDs.
 
 ## Phase 5: WRITE
