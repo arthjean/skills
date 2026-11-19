@@ -1,0 +1,60 @@
+{
+  "skill_name": "write-articles",
+  "evals": [
+    {
+      "id": 1,
+      "name": "deep-dive-performance-change",
+      "prompt": "Écris un article de blog technique sur la dernière amélioration de performance livrée dans ce dépôt. Appuie-toi sur le code, l'historique git et les résultats de benchmark versionnés dans le dépôt pour les chiffres.",
+      "expected_output": "An English engineering deep dive in Markdown: thesis and headline number early, the previous approach and why it failed, the design built step by step with minimal code, numbers traced to the benchmark output, a limits section, informative headings, a figure list with captions, an evidence ledger file, zero dashes in prose, no invented figures.",
+      "files": [],
+      "assertions": [
+        "[script] The lint script finds zero dashes in the article prose",
+        "[script] Publishable as is: no placeholder and no embedded asset that does not exist",
+        "[judge] The thesis or headline result is stated within the first three paragraphs",
+        "[judge] Fact check: the grader re-derives at least eight load-bearing claims from the sources and finds none wrong",
+        "[judge] The gravest limit for this topic, as the grader determines it from the code, is stated",
+        "[judge] Technical terms specific to the topic are defined in plain words at first use",
+        "[judge] One through-line: every section serves the thesis and no section restates another",
+        "[judge] Length suits the genre (deep dive under about 4,000 words unless every section carries a distinct finding; launch 400 to 1,200; essay 800 to 2,000)",
+        "[judge] Every figure quoted from the benchmark matches the benchmark output and is read with its correct meaning (percentile semantics, what each scenario times)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "launch-latest-feature",
+      "prompt": "Write the launch post for the newest user-facing feature of this repository, using its docs and changelog for the exact commands, options, and behavior.",
+      "expected_output": "An English launch post: first sentence says what ships and how to get it, exact commands and names from the docs, any permission, approval, or safety rule the feature enforces explained from the code, known limits, one clear call to action, short (about 400 to 1,000 words), no narrative hook, zero dashes in prose.",
+      "files": [],
+      "assertions": [
+        "[script] The lint script finds zero dashes in the article prose",
+        "[script] Publishable as is: no placeholder and no embedded asset that does not exist",
+        "[judge] The thesis or headline result is stated within the first three paragraphs",
+        "[judge] Fact check: the grader re-derives at least eight load-bearing claims from the sources and finds none wrong",
+        "[judge] The gravest limit for this topic, as the grader determines it from the code, is stated",
+        "[judge] Technical terms specific to the topic are defined in plain words at first use",
+        "[judge] One through-line: every section serves the thesis and no section restates another",
+        "[judge] Length suits the genre (deep dive under about 4,000 words unless every section carries a distinct finding; launch 400 to 1,200; essay 800 to 2,000)",
+        "[judge] The first sentence says what ships and how to get it, with no narrative hook",
+        "[judge] The article follows one concrete use end to end, including what any permission or approval step actually covers"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "essay-design-position",
+      "prompt": "Write an essay for this project's blog defending one of its core design choices against the established alternative its users already rely on. Audience: Hacker News readers who use that alternative daily. Base every factual claim on this repository.",
+      "expected_output": "An English essay: a short hook, the alternative's view stated fairly, a pivot, an argument anchored on concrete, checkable facts from the repo, the strongest objection answered, a short closing line. Every claim it cannot source appears as a TODO(evidence) marker rather than an invented number. Zero dashes in prose.",
+      "files": [],
+      "assertions": [
+        "[script] The lint script finds zero dashes in the article prose",
+        "[script] Publishable as is: no placeholder and no embedded asset that does not exist",
+        "[judge] The thesis or headline result is stated within the first three paragraphs",
+        "[judge] Fact check: the grader re-derives at least eight load-bearing claims from the sources and finds none wrong",
+        "[judge] The gravest limit for this topic, as the grader determines it from the code, is stated",
+        "[judge] Technical terms specific to the topic are defined in plain words at first use",
+        "[judge] One through-line: every section serves the thesis and no section restates another",
+        "[judge] Length suits the genre (deep dive under about 4,000 words unless every section carries a distinct finding; launch 400 to 1,200; essay 800 to 2,000)",
+        "[judge] The strongest objections of the alternative's users are named and answered fairly"
+      ]
+    }
+  ]
+}
