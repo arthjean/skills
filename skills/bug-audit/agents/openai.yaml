@@ -1,0 +1,3 @@
+interface:
+  display_name: "Bug Audit"
+  short_description: "Hunt bugs and prove each with a red check"
