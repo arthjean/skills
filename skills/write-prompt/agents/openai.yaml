@@ -1,0 +1,3 @@
+interface:
+  display_name: "Write Prompt"
+  short_description: "Turn a draft into a short, complete prompt"
