@@ -183,5 +183,5 @@ SUMMARY
 
 ## References
 
-- [Agent Boundaries](@~/.claude/skills/_shared/agent-boundaries.md) — shared agent delegation rules
-- [Three-Tier Constraints](@~/.claude/skills/_shared/three-tier-constraints.md) — ALWAYS/ASK FIRST/NEVER model
+- [Agent Boundaries](references/agent-boundaries.md) — shared agent delegation rules
+- [Three-Tier Constraints](references/three-tier-constraints.md) — ALWAYS/ASK FIRST/NEVER model
