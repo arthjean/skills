@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Agent Guidance"
+  short_description: "Author lean AGENTS.md and CLAUDE.md bridges"
+  default_prompt: "Use $write-agent-guidance to create or audit the AGENTS.md and CLAUDE.md guidance for this repository."
