@@ -1,3 +1,0 @@
-- name: Enforce the macOS 13 deployment baseline
-  if: runner.os == 'macOS'
-  run: echo "MACOSX_DEPLOYMENT_TARGET=13.0" >> "$GITHUB_ENV"

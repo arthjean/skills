@@ -2,46 +2,7 @@
 
 Public collection of Agent Skills used by Arthur across Codex, Claude Code, and other compatible coding agents.
 
-## Install the CLI
-
-Install the native CLI through the npm registry with Node.js 18 or newer:
-
-```bash
-npm install --global @arthjean/skills
-```
-
-Bun can run the package without a separate Node.js installation:
-
-```bash
-bunx --bun --package @arthjean/skills@latest arthur-skills \
-  plan --provider claude --provider codex
-```
-
-With Node.js available, pnpm and Bun can also install the global launcher:
-
-```bash
-pnpm add --global @arthjean/skills
-bun add --global @arthjean/skills
-```
-
-The package contains the native binaries for every supported platform. It does not compile Rust or
-clone this repository during installation.
-
-Review the immutable plan, then apply the same provider selection:
-
-```bash
-arthur-skills plan --provider claude --provider codex
-arthur-skills install --provider claude --provider codex
-arthur-skills doctor
-```
-
-Update the CLI by installing the latest package:
-
-```bash
-npm install --global @arthjean/skills@latest
-```
-
-### Install skills only
+## Install
 
 Install from GitHub with the [`skills` CLI](https://github.com/vercel-labs/skills):
 
@@ -67,90 +28,13 @@ Install globally instead of in the current project:
 bunx skills add arthjean/skills --global
 ```
 
-The `skills` CLI installs skills, but not the Claude and Codex agent definitions bundled with
-`arthur-skills`.
-
-### Standalone installer
-
-Use the standalone installer when a JavaScript runtime or package manager is unavailable. The
-`arthur-skills` binary embeds the complete runtime catalog and requires no JavaScript runtime after
-installation. Rust 1.95.0 is pinned at the repository root.
-
-```bash
-# Pin acquisition to a release, then verify the downloaded checksum file before execution.
-ARTHUR_SKILLS_VERSION=v0.2.1
-curl --proto '=https' --tlsv1.2 -LsSf \
-  "https://github.com/arthjean/skills/releases/download/${ARTHUR_SKILLS_VERSION}/arthur-skills-installer.sh" \
-  -o arthur-skills-installer.sh
-curl --proto '=https' --tlsv1.2 -LsSf \
-  "https://github.com/arthjean/skills/releases/download/${ARTHUR_SKILLS_VERSION}/sha256.sum" \
-  -o sha256.sum
-grep ' arthur-skills-installer.sh$' sha256.sum > arthur-skills-installer.sh.sha256
-if command -v sha256sum >/dev/null; then
-  sha256sum --check arthur-skills-installer.sh.sha256
-else
-  shasum -a 256 --check arthur-skills-installer.sh.sha256
-fi
-sh arthur-skills-installer.sh
-```
-
-Use a published tag and its `sha256.sum` manifest rather than an unpinned main-branch installer. For local development:
-
-```bash
-cargo run -p arthur-skills -- --help
-cargo build --release -p arthur-skills
-```
-
-On Windows, use the signed release inputs from PowerShell:
-
-```powershell
-$Version = "v0.2.1"
-$Base = "https://github.com/arthjean/skills/releases/download/$Version"
-Invoke-WebRequest "$Base/arthur-skills-installer.ps1" -OutFile arthur-skills-installer.ps1
-Invoke-WebRequest "$Base/sha256.sum" -OutFile sha256.sum
-$Checksum = Get-Content sha256.sum | Where-Object { $_ -match ' arthur-skills-installer\.ps1$' }
-if (@($Checksum).Count -ne 1) { throw "Installer checksum entry missing" }
-$Expected = $Checksum.Split()[0].ToLowerInvariant()
-$Observed = (Get-FileHash arthur-skills-installer.ps1 -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($Observed -ne $Expected) { throw "Installer checksum mismatch" }
-& .\arthur-skills-installer.ps1
-```
-
-The installation command surface is `plan`, `install`, `status`, `doctor`, `update`, `uninstall`,
-`adopt`, and `recover`.
-
-Repository maintainers can inspect and synchronize the vendored third-party skills without changing an installed workflow:
-
-```bash
-arthur-skills upstream check
-arthur-skills upstream sync --dry-run
-arthur-skills upstream sync --yes
-```
-
-[`upstreams.toml`](upstreams.toml) records each canonical repository, tracked branch, and skill path. [`upstreams.lock.json`](upstreams.lock.json) pins the imported source revision, Git tree, and vendored content hash. The updater clones each repository once into staging, blocks on local drift or removed upstream paths, and replaces only clean pinned snapshots. The regular `update` command remains offline and reconciles installations exclusively to the catalog embedded in the current binary.
-
-Interactive terminals use Ratatui in an inline viewport. `--plain`, `ARTHUR_SKILLS_PLAIN=1`, or `TERM=dumb` selects the keyboard-driven line renderer. Redirected streams and `CI=true` never prompt; pass explicit `--provider` values and `--yes` for mutations. `--json` emits one schema-v1 envelope and never initializes Ratatui. `NO_COLOR` disables color without changing the interaction mode.
-
-The installer writes canonical skills under `$HOME/.agents/skills`, Claude activations and agents under `$HOME/.claude/{skills,agents}`, Codex agents under `${CODEX_HOME:-$HOME/.codex}/agents`, and its versioned receipt under `$HOME/.agents/.arthur-workflow/receipt.json`. On Windows, `$HOME` falls back to `%USERPROFILE%`, and Claude activations are managed copies because creating symlinks can require Developer Mode or elevated privileges. Unix uses relative Claude symlinks. The installer owns only entries recorded in its receipt or transferred from a verified Vercel Skills v3 lock. `adopt` transfers exactly the skills a verified v3 lock entry proves, and never claims an agent, a support file, or any path the lock does not name. A foreign entry that matches the catalog byte for byte but carries no proof is reported as `matching_unmanaged_without_proof`: move or remove that path, then run `plan` again. Conflicts and drift without an ownership proof are never overwritten or removed. `--dry-run` scans and serializes the same plan without creating directories, locks, staging, timestamps, or a receipt.
-
-One request produces one decision. `plan`, `install --dry-run`, `update --dry-run`, the interactive review, and the executor all consume that same decision, so a confirmed plan applies exactly what it displayed. A managed asset whose bytes differ from both its receipt proof and the bundled catalog is reported as `drifted` and preserved: restore or move it, then run `plan` again. When the content on disk already matches the catalog and only the receipt is stale, the plan shows one `write_receipt` operation that reconciles the installation metadata; a second run is a no-op and rewrites nothing.
-
-Every ownership claim is revalidated under the transaction lock. A destination whose fingerprint changed between the plan and the lock stops the command with `stale_lifecycle_decision`, exit code `3`, and zero mutation: review a new plan. A claim the transaction does not rewrite, such as an adopted entry or a receipt-only convergence, is verified once more immediately before the receipt commit; a change detected there rolls the transaction back with exit code `5`, or keeps the journal and backups for `recover` when the compensation cannot restore a tampered path. No receipt ever records a fingerprint the transaction could not revalidate.
-
-The JSON v1 status set is closed: `success`, `noop`, `blocked`, `failed`, or `recovery_required`. Every diagnostic contains `code`, `severity`, `message`, an optional `source_id` for a legacy lock entry, mutually exclusive `path_utf8` or `path_bytes_hex`, and `remediation`. Every plan entry carries `reason_code` and `ownership_basis` among `receipt`, `verified_legacy`, `created_in_transaction`, and `none`; only a provable basis can enter the receipt. Exit codes are stable: `0` success or no-op, `2` usage or missing non-interactive decisions, `3` conflict, `4` invalid environment, `5` transaction or integrity failure, `130` SIGINT, and `143` SIGTERM.
+The `skills` CLI discovers skills recursively, so the repository installs directly through the GitHub shorthand above. It installs skills only, not the agent definitions under [`agents/`](agents/): copy those into `~/.claude/agents` or `${CODEX_HOME:-~/.codex}/agents` by hand.
 
 ## Repository structure
 
 - [`skills/`](skills/) contains every installable skill. Each skill has its own `SKILL.md` and optional references, scripts, or assets.
-- [`agents/claude/`](agents/claude/) mirrors the agents optimized for Claude Code.
-- [`agents/codex/`](agents/codex/) mirrors the agents optimized for Codex, including their evaluation suite.
-- [`crates/arthur-skills/`](crates/arthur-skills/) contains the native CLI and build-time catalog validator.
-- [`npm/`](npm/) contains the dependency-free package launcher. Release staging injects the verified native binaries.
-- [`shared/claude/skills/_shared/`](shared/claude/skills/_shared/) contains packaged Claude workflow support documents.
-
-The `skills` CLI does not install these agent files.
-
-The CLI discovers skills recursively, so the repository can be installed directly through the GitHub shorthand above.
+- [`agents/claude/`](agents/claude/) holds the agents optimized for Claude Code.
+- [`agents/codex/`](agents/codex/) holds the agents optimized for Codex, including their evaluation suite.
 
 ## License
 
