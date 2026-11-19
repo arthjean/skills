@@ -72,4 +72,11 @@ command = "node_repl"
 
 [permissions.agent-explorer.filesystem]
 ":minimal" = "read"
-":workspace_roots" = "read"
+
+[permissions.agent-explorer.filesystem.":workspace_roots"]
+"." = "read"
+"**/.env" = "none"
+"**/.env.*" = "none"
+"**/.npmrc" = "none"
+"**/*.pem" = "none"
+"**/*.key" = "none"
