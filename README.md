@@ -24,6 +24,14 @@ Skills by Jakub Krehel that help agents design, build, and review polished inter
 bunx skills add jakubkrehel/skills
 ```
 
+### [mattpocock/skills](https://github.com/mattpocock/skills)
+
+Small, composable engineering skills by Matt Pocock that keep the developer in control: stress-testing a plan, modeling the domain, designing and reviewing code, researching, and running retros. Arthur uses a subset of this collection, so the command installs only those skills.
+
+```bash
+bunx skills@latest add mattpocock/skills --skill grilling grill-with-docs domain-modeling codebase-design improve-codebase-architecture code-review research writing-for-agents retro wizard
+```
+
 ## Update
 
 Update every installed skill to its latest version:
