@@ -20,7 +20,7 @@ bun /home/arthur/.codex/agents/evals/run.ts \
 
 Execute it by adding `--run`. The target must be a clean Git root containing a `.agent-eval-fixture` marker. The runner uses `codex exec --ephemeral`, requests the exact custom role with no conversation history, records usage and tool counts, and fails if the fixture changes or Codex exits unsuccessfully.
 
-Review the runner summary against the case assertions. Semantic assertions still require judgement; runtime facts such as selected agent, permissions, tool calls, tokens, process status, and filesystem changes come from execution evidence. Keep `gpt-5.6-sol` and record:
+Review the runner summary against the case assertions. Semantic assertions still require judgement; runtime facts such as selected agent, permissions, tool calls, tokens, process status, and filesystem changes come from execution evidence. Keep the model inherited from the user config and record:
 
 - selected agent;
 - effective permission profile and exposed tools;

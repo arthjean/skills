@@ -80,7 +80,7 @@ if (mcpResult.exitCode !== 0) {
 for (const agent of agentNames) {
   const configUrl = new URL(`../${agent}.toml`, import.meta.url);
   const config = Bun.TOML.parse(await Bun.file(configUrl).text()) as AgentConfig;
-  if (config.model !== "gpt-5.6-sol") errors.push(`${agent}: model must be gpt-5.6-sol`);
+  if (config.model !== undefined) errors.push(`${agent}: model must be inherited from the user config`);
   if (config.default_permissions !== agent) {
     errors.push(`${agent}: default_permissions must match the agent name`);
   }
