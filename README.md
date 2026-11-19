@@ -40,6 +40,18 @@ Cloudflare's skill that turns a coding agent into a security auditor: it maps th
 bunx skills add cloudflare/security-audit-skill --skill security-audit
 ```
 
+## Bonus
+
+Optional skills. They are very useful, but harder to use well than the ones above.
+
+### [cursor/plugins](https://github.com/cursor/plugins)
+
+Cursor's official plugins. Arthur uses a selection of skills that make agents prove their work: creating and maintaining verification and formal verification for a project, checking state machines, turning repeated mistakes into checks, vetting benchmarks, and building and driving CLIs that agents can use reliably.
+
+```bash
+bunx skills add cursor/plugins --skill create-formal-verification-skill statechart maintain-formal-verification-skill create-verification-skill maintain-verification-skill correct benchmark-checklist cli-for-agents control-cli
+```
+
 ## Update
 
 Update every installed skill to its latest version:
