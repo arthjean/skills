@@ -32,6 +32,14 @@ Small, composable engineering skills by Matt Pocock that keep the developer in c
 bunx skills@latest add mattpocock/skills --skill grilling grill-with-docs domain-modeling codebase-design improve-codebase-architecture code-review research writing-for-agents retro wizard
 ```
 
+### [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill)
+
+Cloudflare's skill that turns a coding agent into a security auditor: it maps the codebase, hunts for vulnerabilities, has independent agents try to disprove each finding, and writes a report of what holds up.
+
+```bash
+bunx skills add cloudflare/security-audit-skill --skill security-audit
+```
+
 ## Update
 
 Update every installed skill to its latest version:
