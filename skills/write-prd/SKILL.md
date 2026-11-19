@@ -9,68 +9,43 @@ argument-hint: "[feature description]"
 
 Write a PRD for: $ARGUMENTS
 
-Research the domain and the codebase, make every design decision yourself from that evidence, and write `./tasks/prd-[feature-name].md` plus `./tasks/prd-[feature-name]-status.json`. The run is autonomous: where a question would normally go to the user, answer it from the evidence and log the rationale, so the user reviews a finished PRD rather than a questionnaire. Stop early only when `$ARGUMENTS` names no feature to specify, printing `Usage: /write-prd [feature description]`. Explicit user instructions override anything below.
+Research the domain and the codebase, make every design decision yourself from that evidence, and write `./tasks/prd-[feature-name].md` plus `./tasks/prd-[feature-name]-status.json`. The run is autonomous: where a question would normally go to the user, answer it from the evidence and record the rationale, so the user reviews a finished PRD rather than a questionnaire. Stop early only when `$ARGUMENTS` names no feature to specify, printing `Usage: /write-prd [feature description]`. Explicit user instructions override anything below.
 
-Print `[Phase N/6] NAME` before each phase: INTAKE, RESEARCH, DECIDE, STRUCTURE, WRITE, FINALIZE.
+How you get there is yours to judge. What follows is what the PRD must rest on, the contract its readers depend on, and what done means.
 
-## Phase 1: INTAKE
+## Evidence
 
-Extract the domain, research keywords, implied users, and implied scope. Detect the stack from its manifests, and read existing PRDs (`tasks/prd-*.md`, `docs/prd*.md`, `specs/*.md`) for format conventions and overlap.
+Every decision traces to a research finding or a codebase fact. A finding that drives a decision keeps its source; a claim that arrives without one does not drive a decision. A number (target, limit, latency) comes from evidence or a stated requirement, or is listed as an assumption. Never invent one to fill a slot.
 
-**Fast mode** applies when the scope is likely under 3 stories (a single endpoint, config change, or isolated component): web research only in Phase 2, and one merged decision pass in Phase 3 that still covers edge cases, quality gates, and the devil's advocate.
+Scale the research to the feature. A change confined to an established pattern may need only the codebase; a new product surface needs the domain, comparable approaches, and library documentation too. The helpers are `agent-websearch`, `agent-explore`, and `agent-docs`, briefed from the [research briefs](references/brainstorm-protocols.md#research-briefs); do the work directly when a helper is unavailable or the question is small. Read existing PRDs (`tasks/prd-*.md`, `docs/prd*.md`, `specs/*.md`) for conventions and overlap.
 
-## Phase 2: RESEARCH
+When a source of evidence fails, keep going and say so in the PRD: model knowledge in place of web research lowers confidence, an unexplored codebase leaves constraints unverified.
 
-Research is mandatory and precedes every decision. Each helper runs from its brief in [Brainstorm protocols](references/brainstorm-protocols.md), which carries its budget.
+## Decisions
 
-1. `web-researcher` with the web research brief. Wait for it, then compress its findings into the research brief format.
-2. In one message, so they run in parallel: `agent-explorer` with the codebase brief and the compressed research, when a codebase exists; `docs-researcher` with the documentation brief, when research names libraries.
-3. Synthesize: competitive options, technical trade-offs, feature expectations, risks, codebase constraints. A finding that will drive a decision keeps its source; a claim that arrives without one does not drive a decision.
+Decide what the feature needs decided: scope and non-goals, the technical approach (aligned with the existing codebase unless evidence gives a concrete reason to depart), a mitigation for each security risk the research raised, the edge cases that matter, and the quality gates, taken from the commands the project's scripts and CI already run.
 
-A failed helper does not stop the run. Without web research, fall back to model knowledge and note the reduced confidence; without exploration, mark codebase constraints unverified; without documentation, use official web documentation and note the gap. With no codebase, skip exploration and omit Files NOT to Modify.
+Before writing, challenge the plan: the risks research raised, the beliefs it rests on that research does not confirm, anything research raised that no decision addressed. The [challenge prompts](references/brainstorm-protocols.md#challenge-prompts) list angles that are easy to miss. A high-risk unconfirmed assumption becomes a validation story.
 
-## Phase 3: DECIDE
+## Stories
 
-Print the research brief, then decide each area and log it:
+`/implement-epic` works one epic per run and `/review-epic` certifies it, so:
 
-```
-### {Area}: {Decision}
-**Options considered:** {A, B, C}
-**Chosen:** {X}, because {evidence from research or codebase}
-```
+- Each epic delivers an outcome on its own and has a measurable definition of done.
+- Each story is completable in one agent session and states its dependencies.
+- Each acceptance criterion is one atomic fact, verifiable from a real entry point, and every story has at least one unhappy-path criterion.
+- A complex edge case gets its own story; a simple one becomes a criterion on an existing story.
 
-Every option traces to a research finding or a codebase fact.
+Let the feature set the shape: a small feature is one epic with a few stories, and a large one takes as many epics as it needs.
 
-- **Vision and scope**: positioning among the competitor approaches, whether the market gap is a v1 differentiator, the primary user, and the MVP drawn from research's minimum user expectations.
-- **Technical**: architecture, data handling, and stack aligned with the existing codebase unless research gives a concrete reason to depart; a mitigation for each security risk research raised, built now or tracked as its own story.
-- **Prioritization**: MoSCoW for every capability. Must = minimum viable from research, Should = competitive parity, Could = differentiators, Won't = outside v1.
-- **Edge cases**: the relevant categories from the edge-case list in the protocols, each with a feature-specific example.
-- **Quality gates**: the commands the project already runs, taken from its scripts and CI config.
-- **Devil's advocate**: challenge the plan on each axis in the protocols, and log how each surviving concern is handled.
+## Write and check
 
-## Phase 4: STRUCTURE
+1. Write the PRD from the [PRD template](references/prd-template.md). Its contract sections, IDs, criteria format, and status schema are what `/implement-epic` and `/review-epic` read: keep them as specified. Every other section is optional and appears only when the evidence gives it real content.
+2. Write the status JSON per the template's schema and save both files, creating `tasks/` if needed.
+3. Hand both files to a fresh read-only subagent with the [review rubric](references/brainstorm-protocols.md#review-rubric): an author rereading its own PRD is too lenient. Fix what it reports and recheck only those items.
 
-- **Epics**: 2-6, ordered by priority with Must Have first, each with a measurable definition of done and 2-8 stories (more than 8: split the epic).
-- **Stories** via SPIDR: Spike (research or validation, last resort), Path (alternate user flows), Interface (technology layer or progressive UI polish), Data (a subset of data types first), Rules (relax business rules, restore them in follow-on stories). Each story gets a `US-NNN` ID, a title, an "As a... I want... so that..." description, `- [ ]` acceptance criteria with at least one unhappy path, a priority (P0, P1, P2), dependencies, and a size, and is completable in one agent session.
-- **Edge cases**: a dedicated story for complex ones, criteria on existing stories for simple ones.
-- **Dependencies**: which stories block others, which run in parallel, and cross-epic links.
-- **Sizes**: XS 1 (config change, single file), S 2 (CRUD endpoint, simple component), M 3 (business logic across files), L 5 (multiple integrations), XL 8 (split further).
-- **Validation spikes**: each high-risk assumption becomes "US-NNN: Validate assumption: {X}" with validation criteria.
-- **Size cap**: more than 20 stories splits into phased releases or several PRDs.
+## Finish
 
-## Phase 5: WRITE
+Set the PRD status to `READY`. Report, leading with what the user may want to overturn: the decisions resting on the thinnest evidence (with the options considered), the high-risk assumptions, and the open questions. Then the epics and stories, the quality gates, and the next steps (`/implement-epic`, then `/review-epic`).
 
-1. Write the PRD exactly in the format of the [PRD template](references/prd-template.md): `/implement-epic`, `/review-epic`, and other parsers depend on its markers, headings, and IDs.
-2. Write the status JSON per the template's status file schema.
-3. Run the self-validation checklist from the protocols. Each check cites the PRD section that satisfies it; a check with no citable section fails and gets fixed before saving.
-4. Save both files, creating `tasks/` if needed.
-
-## Phase 6: FINALIZE
-
-Set the PRD status to `READY` in the status file. Report, leading with what the user may want to overturn: the decisions resting on the thinnest evidence, the high-risk assumptions, and the open questions. Then the epics and stories table, the quality gates, and the next steps (`/implement-epic`, then `/review-epic`).
-
-**Complete when:** both files are saved, every self-validation check cites its section, and the status JSON is valid and lists every epic and story in the PRD.
-
-## Sources
-
-Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).
+**Complete when:** both files are saved, the rubric review has no open failure, and the status JSON is valid and lists every epic and story in the PRD.

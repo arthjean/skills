@@ -12,7 +12,7 @@ Finish the epic so that every acceptance criterion is proven from a real executi
 
 ## Scope
 
-Resolve the PRD path and epic ID. Without an epic ID, take the first epic with `TODO`, `IN_PROGRESS`, or `BLOCKED` stories. Work the incomplete stories in dependency order; skip `DONE`, `IN_REVIEW`, and `CANCELLED` stories unless reimplementation was requested. Read what you need to locate integration points, nothing more.
+Resolve the PRD path and epic ID. Without an epic ID, take the first epic with `TODO`, `IN_PROGRESS`, or `BLOCKED` stories. Work the incomplete stories in dependency order; skip `DONE`, `IN_REVIEW`, and `CANCELLED` stories unless reimplementation was requested; a `BLOCKED` story resumes at `IN_PROGRESS` once its blocker is gone. The PRD's Non-Goals, Quality Gates, and Files NOT to Modify bound the epic: read them before editing. In the codebase, read what you need to locate integration points, nothing more.
 
 Carry every incomplete story in one run. Between stories, keep going and put progress notes in the same message as the next action; the only early stops are the `BLOCKED` conditions under Boundaries. The status file is the run's checklist: set each story `IN_PROGRESS` when you start it, so progress survives context compaction and anyone reading the file sees where the run stands.
 
@@ -30,29 +30,20 @@ External evidence (docs, web) is worth fetching only when a current or version-s
 
 ## Validation
 
-Validate in proportion to the risk of the changed surface, once, after the last code change:
+Run tests and checks as often as they help while you work. The final validation is the run after the last code change, sized by a tier that follows the risk of the changed surface:
 
-- Isolated behavior on an established pattern: acceptance tests plus the configured checks for changed files.
-- Shared integration, public behavior, or multi-module change: add integration tests and applicable project gates.
-- Auth, payments, PII, migrations, untrusted input, crypto, destructive operations, LLM tools, or cross-service behavior: add the relevant full suite and existing security or supply-chain checks.
+- `fast`, isolated behavior on an established pattern: acceptance tests, the PRD's Quality Gates, and the configured checks for changed files.
+- `default`, shared integration, public behavior, or multi-module change: add integration tests and applicable project gates.
+- `deep`, auth, payments, PII, migrations, untrusted input, crypto, destructive operations, LLM tools, or cross-service behavior: add the relevant full suite and existing security or supply-chain checks.
 
-File count alone never selects the heaviest tier. Local tests, builds, type checks, and linters are authorized without asking; fix failures caused by the epic and rerun the affected checks. A repair after validation invalidates only the dependent evidence. Only the passing run after the final change counts.
+`--profile` sets the tier; without it, pick the tier from the surface. File count alone never selects the heaviest tier. Local tests, builds, type checks, and linters are authorized without asking; fix failures caused by the epic and rerun the affected checks. A repair after validation invalidates only the dependent evidence. Only the passing run after the final change counts.
 
 ## Handoff
 
-Set implemented stories to `IN_REVIEW`, roll up epic status and counters, leave `completed_at` unset, validate the tracker with an existing repository check when one exists. Print `STATUS IN_REVIEW` when every non-cancelled story is implemented, wired, and validated, otherwise `STATUS BLOCKED`.
+Set implemented stories to `IN_REVIEW` and any story stopped by a condition under Boundaries to `BLOCKED`, roll up epic status and counters, leave `completed_at` unset, validate the tracker with an existing repository check when one exists. Print `STATUS IN_REVIEW` when every non-cancelled story is implemented, wired, and validated, otherwise `STATUS BLOCKED`.
 
 Receipt, leading with what needs the user (blockers, decisions left open, proof only a human can give), then: epic and tier, scope corrections, stories implemented, criterion to `file:line` and entry point and proof, changed files, validation results, and the `review-epic` command to run next.
 
 ## Boundaries
 
 Stay inside the epic and preserve unrelated worktree changes. Never weaken tests, fabricate proof, or claim validation from an earlier code state. Never mark `DONE`. Report as `BLOCKED` when the same cause survives two distinct repair approaches, when wiring needs an unapproved architectural decision, or when credentials, external systems, or human-only proof are required. Commit, push, publish, destructive external actions, and scope expansion need explicit authorization.
-
-## Examples
-
-- `/implement-epic tasks/prd-notifications.md EP-002`
-- `/implement-epic tasks/prd-billing.md EP-003 --profile deep`
-
-## Sources
-
-Tuned against [The new rules of context engineering for Claude 5 generation models](https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/) (Anthropic, 2026-07-24), [Getting the most out of Opus 5.5](https://claude.dev/blog/getting-the-most-out-of-opus-5-5/#say-what-done-looks-like-then-let-it-run) (Anthropic, 2026-09-22), and [OpenAI model guidance for GPT-6 Astra](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra).

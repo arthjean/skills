@@ -1,80 +1,26 @@
-# PRD Template - Exact Format for /implement-epic and /review-epic Compatibility
+# PRD Template and Status Contract for /implement-epic and /review-epic
 
-## Complete PRD Template
+## PRD Template
+
+Contract sections are required: `/implement-epic` and `/review-epic` read them. Optional sections appear only when the evidence gives them real content; leave one out rather than fill it.
 
 ```markdown
 [PRD]
 # PRD: {Feature Name}
 
-## Changelog
-
-| Version | Date | Author | Summary |
-|---------|------|--------|---------|
-| 1.0 | {YYYY-MM-DD} | {author} | Initial draft |
-
 ## Problem Statement
 
-{Specific, numbered problem description. Answer: What is the problem? Who has it? Why now?}
+{What the problem is, who has it, and the evidence for it.}
 
-1. {Problem 1: specific pain point with evidence from research or user data}
-2. {Problem 2}
-
-**Why now:** {What has changed that makes solving this urgent: market shift, user demand, competitive pressure, compliance deadline}
+**Why now:** {What changed that makes this worth solving now}
 
 ## Overview
 
-{2-3 paragraphs: What is the proposed solution? How does it address the problems above?
-Include the key decisions made during brainstorming.}
+{The proposed solution and how it addresses the problem, including the key decisions and the evidence behind each.}
 
-## Goals
+## Non-Goals
 
-| Goal | Month-1 Target | Month-6 Target |
-|------|---------------|----------------|
-| {Measurable objective 1} | {target} | {target} |
-| {Measurable objective 2} | {target} | {target} |
-| {Measurable objective 3} | {target} | {target} |
-
-## Target Users
-
-### {User Role A}
-- **Role:** {Who they are}
-- **Behaviors:** {How they currently work, what tools they use}
-- **Pain points:** {What frustrates them today}
-- **Current workaround:** {How they solve this problem now}
-- **Success looks like:** {What outcome would delight them}
-
-### {User Role B}
-- **Role:** {Who they are}
-- **Behaviors:** {How they currently work}
-- **Pain points:** {What frustrates them}
-- **Current workaround:** {How they solve this now}
-- **Success looks like:** {What outcome would delight them}
-
-## Research Findings
-
-Key findings that informed this PRD:
-
-### Competitive Context
-- {Competitor A}: {what they offer, how we differ}
-- {Competitor B}: {what they offer, how we differ}
-- **Market gap:** {unmet need we're addressing}
-
-### Best Practices Applied
-- {Practice 1 from research that shaped our approach}
-- {Practice 2}
-
-*Full research sources available in project documentation.*
-
-## Assumptions & Constraints
-
-### Assumptions (to validate)
-- {Assumption 1: what we believe to be true, based on {evidence}}
-- {Assumption 2}
-
-### Hard Constraints
-- {Constraint 1: e.g., must work with existing auth system}
-- {Constraint 2: e.g., legal/compliance requirement}
-- {Constraint 3: e.g., must ship before {date}}
+- {What this version will not do, and why}
 
 ## Quality Gates
 
@@ -82,140 +28,59 @@ These commands must pass for every user story:
 - `{command_1}` - {description}
 - `{command_2}` - {description}
 
-{For UI stories, additional gates:}
-- {visual verification instruction}
-
 ## Epics & User Stories
 
 ### EP-001: {Epic Title}
 
-{1-2 sentence epic description. What business outcome does this epic deliver?}
+{The outcome this epic delivers.}
 
-**Definition of Done:** {When is this epic complete?}
+**Definition of Done:** {Measurable completion condition}
 
 #### US-001: {Story Title}
-**Description:** As a {user role}, I want {concrete action} so that {measurable outcome}.
+**Description:** As a {user role}, I want {concrete action} so that {outcome}.
 
 **Priority:** P0
-**Size:** S (2 pts)
 **Dependencies:** None
 
 **Acceptance Criteria:**
 - [ ] Given {context}, when {action}, then {verifiable result}
-- [ ] Given {edge case}, when {action}, then {explicit behavior}
-- [ ] {Additional atomic criterion}
+- [ ] Given {failure or edge case}, when {action}, then {explicit behavior}
 
 #### US-002: {Story Title}
-**Description:** As a {user role}, I want {concrete action} so that {measurable outcome}.
+**Description:** As a {user role}, I want {concrete action} so that {outcome}.
 
-**Priority:** P0
-**Size:** M (3 pts)
+**Priority:** P1
 **Dependencies:** Blocked by US-001
 
 **Acceptance Criteria:**
-- [ ] {Criterion}
 - [ ] {Criterion}
 
 ---
 
 ### EP-002: {Epic Title}
 
-{Epic description.}
-
-**Definition of Done:** {Completion criteria}
-
-#### US-003: {Story Title}
-**Description:** As a {user role}, I want {action} so that {outcome}.
-
-**Priority:** P1
-**Size:** S (2 pts)
-**Dependencies:** Blocked by US-001
-
-**Acceptance Criteria:**
-- [ ] {Criterion}
-- [ ] {Criterion}
-
-#### US-004: {Story Title}
-...
-
----
-
-{Continue for all epics and stories...}
-
-## Functional Requirements
-
-- FR-01: {The system must...}
-- FR-02: {When a user..., the system must...}
-- FR-03: {The system must NOT...}
-
-## Non-Functional Requirements
-
-IMPORTANT: Every NFR must have a specific, measurable number. No subjective adjectives.
-
-- **Performance:** {e.g., "P95 API latency <200ms", "Dashboard loads in <800ms on 3G", "Supports 500 concurrent users at launch"}
-- **Security:** {e.g., "OWASP Top 10 compliant", "All PII encrypted at rest (AES-256)", "Session timeout after 30 min inactivity"}
-- **Accessibility:** {e.g., "WCAG 2.1 AA compliant", "Full keyboard navigation", "Screen reader compatible"}
-- **Scalability:** {e.g., "Supports 10,000 concurrent users by Month 6", "Database handles 1M records without degradation"}
-- **Reliability:** {e.g., "99.9% uptime SLA", "Auto-retry 3x on transient failures", "Graceful degradation when {service} is down"}
-
-## Edge Cases & Error States
-
-Systematic coverage of unhappy paths. Evidence shows earlier defect discovery significantly reduces cost (Boehm 1981, NIST 2002).
-
-| # | Scenario | Trigger | Expected Behavior | User Message |
-|---|----------|---------|-------------------|--------------|
-| 1 | {Empty state} | {First-time user, zero data} | {Show onboarding prompt} | "{CTA message}" |
-| 2 | {Loading state} | {Async operation in progress} | {Show skeleton/spinner} | None |
-| 3 | {Error state} | {API failure, validation error} | {Show actionable error} | "{Error message with next step}" |
-| 4 | {Network degradation} | {Slow/offline connection} | {Graceful degradation behavior} | "{Offline message}" |
-| 5 | {Boundary value} | {Min/max/zero/overflow input} | {Explicit behavior at limits} | "{Validation message}" |
-| {N} | {Additional relevant scenarios from Phase 3} | ... | ... | ... |
-
-## Risks & Mitigations
-
-| # | Risk | Probability | Impact | Mitigation |
-|---|------|------------|--------|------------|
-| 1 | {Risk from research} | High/Med/Low | High/Med/Low | {Specific mitigation strategy} |
-| 2 | {Technical risk} | High/Med/Low | High/Med/Low | {Mitigation} |
-| 3 | {Market/business risk} | High/Med/Low | High/Med/Low | {Mitigation} |
-
-## Non-Goals
-
-What this version explicitly does NOT include:
-
-- {What this feature explicitly will NOT do, and why}
-- {Feature that is out of scope, and when it might be revisited}
-- {Adjacent functionality deferred to future work}
+{Continue for all epics and stories.}
 
 ## Files NOT to Modify
 
-{Only include if a codebase exists. Critical for AI agents.}
-- `path/to/core/infrastructure.ext`: {reason}
-- `path/to/shared/config.ext`: {reason}
-
-## Technical Considerations
-
-Frame as questions for engineering input, not mandates:
-
-- **Architecture:** {Key decision}; recommended: {option A}. Engineering to confirm feasibility.
-- **Data Model:** {Schema changes needed?} {option A} vs {option B}. Trade-off: {description}.
-- **API Design:** {New endpoints needed?} Recommended: {approach}. Pagination strategy: cursor-based or offset-based?
-- **Dependencies:** {New libraries or services?} {library} (v{x}) recommended by research. Alternatives: {alt}.
-- **Migration:** {Data migration needs?} Backward compatibility requirement: {yes/no}. Rollback plan: {description}.
-
-## Success Metrics
-
-| Metric | Baseline (current) | Target | Timeframe | How Measured |
-|--------|-------------------|--------|-----------|-------------|
-| {Metric 1} | {current value or "N/A (new)"} | {target} | {Month-1 / Month-6} | {analytics tool, query, or manual} |
-| {Metric 2} | {current value} | {target} | {timeframe} | {measurement method} |
-
-## Open Questions
-
-- {Question 1: who should answer, by when, what depends on this}
-- {Question 2: who should answer, by when, what depends on this}
+{Required when a codebase exists.}
+- `path/to/file.ext`: {reason}
 [/PRD]
 ```
+
+### Optional sections
+
+Add any of these, as a `##` section placed before `## Epics & User Stories` or after it, when the evidence supports it:
+
+- **Goals** or **Success Metrics**: objectives with a baseline, a target, and how each is measured, when those values are known.
+- **Target Users**: roles, current workarounds, and pain points the research documented.
+- **Research Findings**: the findings that shaped the PRD, each with its source link.
+- **Assumptions & Constraints**: what the PRD believes but has not validated, and the hard constraints it must respect.
+- **Functional Requirements** (`FR-NN`) and **Non-Functional Requirements**: only requirements with a source; a non-functional target carries a number only when evidence or the user supplies one.
+- **Edge Cases & Error States**: scenario, trigger, expected behavior, user message.
+- **Risks & Mitigations**: risk, probability, impact, mitigation.
+- **Technical Decisions**: each decision with the options considered and the evidence for the choice.
+- **Open Questions**: what only the user or a later validation can settle, and what depends on it.
 
 ---
 
@@ -227,8 +92,8 @@ Frame as questions for engineering input, not mandates:
 
 ### Heading Hierarchy
 - `#`: PRD title
-- `##`: Top-level sections (Changelog, Problem Statement, Overview, Goals, Target Users, Research Findings, Assumptions & Constraints, Quality Gates, Epics & User Stories, Functional Requirements, Non-Functional Requirements, Edge Cases & Error States, Risks & Mitigations, Non-Goals, Files NOT to Modify, Technical Considerations, Success Metrics, Open Questions)
-- `###`: Epic headings within Epics & User Stories section, or persona headings in Target Users
+- `##`: Top-level sections (the contract sections Problem Statement, Overview, Non-Goals, Quality Gates, Epics & User Stories, Files NOT to Modify, plus any optional section)
+- `###`: Epic headings within Epics & User Stories
 - `####`: Individual story headings within an epic
 
 ### Acceptance Criteria Format
@@ -245,12 +110,11 @@ Frame as questions for engineering input, not mandates:
 ### PRD Wrapper
 - `[PRD]` on its own line before the document
 - `[/PRD]` on its own line after the document
-- These markers are used by ralph-tui and other parsing tools
+- These markers let external parsing tools extract the document
 
 ### Story Metadata
 Each story carries inline metadata:
 - `**Priority:**`: P0 (must have), P1 (should have), P2 (could have)
-- `**Size:**`: XS (1pt), S (2pt), M (3pt), L (5pt), XL (8pt)
 - `**Dependencies:**`: "None" or "Blocked by US-NNN, US-NNN"
 
 ### File Naming
@@ -286,7 +150,6 @@ Each story carries inline metadata:
       "epic": "EP-001",
       "status": "TODO | IN_PROGRESS | IN_REVIEW | DONE | BLOCKED | CANCELLED",
       "priority": "P0 | P1 | P2",
-      "size": "XS | S | M | L | XL",
       "blocked_by": [],
       "started_at": null,
       "completed_at": null,
@@ -303,18 +166,18 @@ TODO → IN_PROGRESS → IN_REVIEW → DONE
                           ↑          |
                           └──────────┘   downgrade on disproven completion
 
-Any → BLOCKED → TODO
+Any → BLOCKED → IN_PROGRESS
 Any → CANCELLED
 ```
 
-Ownership is strict: `/implement-epic` owns `TODO` → `IN_PROGRESS` → `IN_REVIEW` and never writes `DONE`. `/review-epic` alone writes `DONE`, the `DONE` → `IN_REVIEW` downgrade, and `BLOCKED`. Certification never comes from the skill that wrote the code.
+Ownership is strict: `/implement-epic` owns `TODO` → `IN_PROGRESS` → `IN_REVIEW` and never writes `DONE`. `/review-epic` alone writes `DONE` and the `DONE` → `IN_REVIEW` downgrade. Either skill writes `BLOCKED` for a story it cannot move forward. Certification never comes from the skill that wrote the code.
 
 - `TODO` → `IN_PROGRESS`: when `/implement-epic` starts the story
 - `IN_PROGRESS` → `IN_REVIEW`: when `/implement-epic` has implemented the story, wired it into a real execution path, and passed its final validation bundle. Implementation is complete but uncertified.
 - `IN_REVIEW` → `DONE`: when `/review-epic` proves every criterion from a real entry point, required gates pass, and no blocking finding remains
 - `DONE` → `IN_REVIEW`: when `/review-epic` disproves completion or leaves required manual verification
 - Any → `BLOCKED`: when a dependency, irreversible decision, unresolvable wiring gap, or repeated technical failure prevents further work
-- `BLOCKED` → `TODO`: when blocker is resolved
+- `BLOCKED` → `IN_PROGRESS`: when the blocker is resolved and `/implement-epic` resumes the story
 - Any → `CANCELLED`: manual decision
 
 `/implement-epic` leaves `completed_at` unset; it belongs to certification. `/review-epic` sets `reviewed_at` on every reviewed, non-cancelled child story, sets `completed_at` on newly certified stories, and then recalculates story, epic, and PRD roll-ups.
@@ -329,8 +192,8 @@ Ownership is strict: `/implement-epic` owns `TODO` → `IN_PROGRESS` → `IN_REV
 
 ### PRD Status
 
-- `DRAFT`: during brainstorming and writing
-- `READY`: written and self-validated, ready for implementation
+- `DRAFT`: during research and writing
+- `READY`: written and reviewed against the rubric, ready for implementation
 - `IN_PROGRESS`: at least one story started
 - `IN_REVIEW`: every epic is `IN_REVIEW` or `DONE`, and at least one is not `DONE`
 - `DONE`: all epics DONE
